@@ -211,7 +211,58 @@ Invoke-RestMethod -Uri "https://<host>:18443/webhook/fortigate" -Method Post `
 
 ---
 
-## 7. Security — internal deployment
+## 7. Optional FortiClient EMS overseas monitor
+
+The `feature/ems-overseas-monitor` implementation adds an isolated polling
+service that detects an endpoint appearing or coming online from a foreign
+public IP and sends the warning to that endpoint's user through the same SMTP
+relay as IPsecAlert. If EMS returns a UPN/e-mail it is used directly; otherwise
+the existing LDAP settings resolve the account. `EMS_ALERT_TO` is the fallback
+when the user's mailbox cannot be resolved.
+
+Fortinet's public EMS 7.4.7 guide confirms that EMS has an API, but keeps the
+version-specific operations and paths in the authenticated **FortiAPI** tab on
+FNDN. For that reason this project does not guess an unsupported URL. Set
+`EMS_ENDPOINTS_PATH` and the JSON mappings from the EMS 7.4.7 FortiAPI page:
+
+<https://docs.fortinet.com/document/forticlient/7.4.7/ems-administration-guide/30768/forticlient-ems-api>
+
+### Setup
+
+1. Copy a current MaxMind GeoLite2 Country database to
+   `geoip/GeoLite2-Country.mmdb`. GeoIP lookups stay local.
+2. Fill the `EMS_*` section in `.env`, especially `EMS_API_URL`,
+   `EMS_ENDPOINTS_PATH`, `EMS_API_TOKEN`, and `EMS_ALERT_TO`.
+3. Validate the API shape before starting the monitor:
+
+```bash
+docker compose --profile ems run --rm ems-monitor \
+  python -m app.ems_monitor --validate-api
+```
+
+The command prints only the record count and available JSON field paths. If the
+defaults do not match, update `EMS_ENDPOINTS_KEY` and the `EMS_*_FIELDS` lists.
+It does not print endpoint values, tokens, users, or IP addresses.
+
+4. Start the monitor:
+
+```bash
+docker compose --profile ems up -d --build
+docker compose logs -f ems-monitor
+```
+
+The first successful poll creates a SQLite baseline in the `ems_state` volume
+and sends no mail. Later polls alert only when a foreign endpoint is newly seen,
+changes from offline to online, or changes to a new foreign public IP. Domestic
+registrations do not generate user notifications. If SMTP delivery fails, that
+endpoint's state is not advanced, so the next poll retries.
+
+This detects the FortiClient-to-EMS management connection, not a VPN session.
+GeoIP is approximate and may reflect a NAT, proxy, or corporate egress address.
+
+---
+
+## 8. Security — internal deployment
 
 This service is meant to run on a closed internal network (FortiGate → service);
 it should never be internet-facing. Defence in depth, outside-in:
@@ -255,7 +306,7 @@ nft add rule inet filter input tcp dport 18443 drop
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Likely cause |
 |---------|--------------|

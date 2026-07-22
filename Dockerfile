@@ -14,8 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY gunicorn.conf.py .
 
-# Run as an unprivileged user.
-RUN useradd --system --uid 10001 --no-create-home appuser
+# Run as an unprivileged user. Seed writable-volume paths with the right owner
+# so Docker copies their permissions into newly created named volumes.
+RUN useradd --system --uid 10001 --no-create-home appuser \
+    && mkdir -p /data /geoip \
+    && chown appuser:appuser /data
 USER appuser
 
 EXPOSE 8080

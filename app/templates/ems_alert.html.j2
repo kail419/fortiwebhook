@@ -1,0 +1,29 @@
+<div style="margin:0;padding:0;background:#eef0f3;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;font-family:'Segoe UI','Microsoft JhengHei',Arial,sans-serif;color:#1f2933;">
+        <tr><td style="background:#b91c1c;padding:18px 28px;color:#fff;font-size:19px;font-weight:700;">
+          &#9888;&#65039; EMS 資安通知 &middot; Overseas Connection Alert
+        </td></tr>
+        <tr><td style="padding:26px 28px;">
+          <p style="margin:0 0 12px;">{{ endpoint.user or endpoint.hostname or "使用者" }} 您好,</p>
+          <p style="margin:0 0 18px;line-height:1.7;">系統偵測到您的裝置目前使用海外網路連線至 FortiClient EMS，請確認以下來源 IP 是否為您本人使用。</p>
+          <div style="background:#fef3f2;border:2px solid #f04438;border-radius:8px;padding:16px;margin:0 0 20px;text-align:center;">
+            <div style="font-size:13px;color:#667085;margin-bottom:5px;">來源 IP / Source IP</div>
+            <div style="font-size:26px;font-weight:800;color:#b42318;letter-spacing:.5px;">{{ endpoint.ip or "N/A" }}</div>
+            <div style="font-size:15px;font-weight:600;margin-top:7px;">{{ endpoint.country_name or endpoint.country_code or "Unknown" }}</div>
+          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px;font-size:14px;">
+            <tr><td style="padding:9px;background:#f5f6f8;border:1px solid #e4e7eb;">使用者 User</td><td style="padding:9px;border:1px solid #e4e7eb;">{{ endpoint.user or "N/A" }}</td></tr>
+            <tr><td style="padding:9px;background:#f5f6f8;border:1px solid #e4e7eb;">裝置 Device</td><td style="padding:9px;border:1px solid #e4e7eb;">{{ endpoint.hostname or "N/A" }}</td></tr>
+            <tr><td style="padding:9px;background:#f5f6f8;border:1px solid #e4e7eb;">狀態 Status</td><td style="padding:9px;border:1px solid #e4e7eb;">{{ endpoint.status or "Unknown" }}</td></tr>
+            <tr><td style="padding:9px;background:#f5f6f8;border:1px solid #e4e7eb;">最後上線時間</td><td style="padding:9px;border:1px solid #e4e7eb;">{{ endpoint.last_seen or "N/A" }}</td></tr>
+          </table>
+          <div style="padding:12px 14px;background:#ecfdf3;border-left:4px solid #12b76a;margin-bottom:12px;line-height:1.6;"><strong style="color:#027a48;">若確認是您本人使用</strong><br>無須採取任何行動。</div>
+          <div style="padding:12px 14px;background:#fef3f2;border-left:4px solid #f04438;line-height:1.6;"><strong style="color:#b42318;">&#9888; 若來源 IP 或國家不是您本人使用</strong><br>請立即停止連線並聯絡資訊安全單位協助確認。</div>
+        </td></tr>
+        <tr><td style="padding:16px 28px 22px;border-top:1px solid #eef0f3;font-size:12px;color:#7b8794;">本信由系統自動發送，請勿直接回覆。{% if org_name %}<br>—— {{ org_name }} 資訊安全中心{% endif %}</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</div>

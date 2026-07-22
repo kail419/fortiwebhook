@@ -1,0 +1,22 @@
+【EMS 資安通知 / Security Alert】
+
+{{ endpoint.user or endpoint.hostname or "使用者" }} 您好,
+
+系統偵測到您的裝置目前使用海外網路連線至 FortiClient EMS，請確認以下來源 IP 是否為您本人使用。
+
+── 連線資訊 / Connection details ──
+  使用者 User : {{ endpoint.user or "N/A" }}
+  裝置 Device : {{ endpoint.hostname or "N/A" }}
+  來源 IP     : {{ endpoint.ip or "N/A" }}
+  國家 Country: {{ endpoint.country_name or endpoint.country_code or "Unknown" }}
+  狀態 Status : {{ endpoint.status or "Unknown" }}
+  最後上線時間: {{ endpoint.last_seen or "N/A" }}
+
+■ 若確認是您本人使用
+  無須採取任何行動。
+
+⚠ 若來源 IP 或國家不是您本人使用
+請立即停止連線並聯絡資訊安全單位協助確認。
+
+本信由系統自動發送，請勿直接回覆。
+{% if org_name %}—— {{ org_name }} 資訊安全中心{% endif %}

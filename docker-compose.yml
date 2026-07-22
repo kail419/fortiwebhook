@@ -68,6 +68,36 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  ems-monitor:
+    profiles: ["ems"]
+    build: .
+    image: ipsecalert:latest
+    container_name: ipsecalert-ems-monitor
+    command: ["python", "-m", "app.ems_monitor"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    healthcheck:
+      disable: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ems_state:/data
+      - ./geoip/GeoLite2-Country.mmdb:/geoip/GeoLite2-Country.mmdb:ro
+      - ./certs:/certs:ro
+      - ./app/templates:/app/app/templates:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 volumes:
   caddy_data:
   caddy_config:
+  ems_state:
