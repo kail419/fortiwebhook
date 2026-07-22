@@ -9,12 +9,14 @@
 #   FORTIGATE_IPS=10.10.1.1
 {$SITE_ADDRESS::443} {
 
-	# ---- TLS ------------------------------------------------------------
-	# (A) Public domain: set SITE_ADDRESS to a real name; leave this commented.
-	# (B) Internal self-signed (default): ":443" already uses the local CA.
-	# tls internal
-	# (C) Corporate/internal-CA cert (best for "verify on FortiGate"):
-	# tls /certs/fullchain.pem /certs/privkey.pem
+	# ---- TLS: company GoDaddy wildcard cert (mounted at /certs) ----------
+	# fullchain.pem = your leaf cert + GoDaddy intermediate bundle (leaf first);
+	# privkey.pem  = the matching private key. See certs/README.md.
+	# FortiGate connects by an FQDN the wildcard covers (e.g.
+	# fortiwebhook.gss.com.tw) and verifies against GoDaddy's trusted root.
+	tls /certs/fullchain.pem /certs/privkey.pem
+	# Alternatives: `tls internal` (self-signed local CA), or set SITE_ADDRESS to a
+	# public domain and remove the line above for automatic Let's Encrypt.
 
 	# 1) Reject any source that is not an allowed internal address.
 	@untrusted not remote_ip {$FORTIGATE_IPS:private_ranges}

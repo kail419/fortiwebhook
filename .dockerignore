@@ -9,3 +9,9 @@ __pycache__/
 tests/
 scripts/
 *.md
+certs/
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12

@@ -5,3 +5,12 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+
+# TLS material — NEVER commit private keys or certificates
+certs/*
+!certs/README.md
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12

@@ -55,8 +55,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data       # persists issued/self-signed certs across restarts
       - caddy_config:/config
-      # Corporate cert (Caddyfile option C):
-      # - ./certs:/certs:ro
+      # Company GoDaddy wildcard cert, read-only (see certs/README.md).
+      - ./certs:/certs:ro
     logging:
       driver: json-file
       options:

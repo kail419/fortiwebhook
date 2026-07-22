@@ -28,14 +28,18 @@ Runs as two always-on containers on a Linux host:
 cp .env.example .env
 # edit .env: WEBHOOK_TOKEN, LDAP_*, SMTP_*, MAIL_FROM  (see the file's comments)
 
+# Put the GoDaddy wildcard cert in certs/ (see certs/README.md):
+#   certs/fullchain.pem  (leaf + GoDaddy intermediate bundle)
+#   certs/privkey.pem    (private key)
+
 docker compose up -d --build
 docker compose ps           # both containers should be "running"/"healthy"
 docker compose logs -f
 ```
 
-With the default `SITE_ADDRESS=:443`, Caddy serves HTTPS immediately using a
-self-signed certificate from its own local CA — no domain or internet needed.
-Verify (the `-k` accepts the self-signed cert):
+Caddy serves HTTPS on `:443` (published as `HOST_HTTPS_PORT`) using the company
+**GoDaddy wildcard** cert from `certs/`. Verify locally (`-k` skips the hostname
+check when hitting `127.0.0.1`; real clients use the FQDN and validate fully):
 
 ```bash
 curl -k https://<host>:18443/health
@@ -53,23 +57,29 @@ INSECURE=1 WEBHOOK_TOKEN=$(grep ^WEBHOOK_TOKEN= .env | cut -d= -f2) \
 
 ## 2. HTTPS / reverse proxy (Caddy)
 
-TLS is terminated by Caddy so the shared token is never sent in cleartext. Pick
-the mode that fits your network by editing `SITE_ADDRESS` in `.env` and, for
-options B/C, uncommenting a line in the [Caddyfile](Caddyfile):
+TLS is terminated by Caddy. This deployment uses the **company GoDaddy wildcard
+certificate** (`*.gss.com.tw`), which FortiGate already trusts — so certificate
+verification stays on with nothing to import.
 
-| Mode | When | How |
-|------|------|-----|
-| **A. Public domain** | The host is internet-reachable with a real DNS name | `SITE_ADDRESS=ipsecalert.corp.example.com` — Caddy auto-obtains & renews a Let's Encrypt cert. Needs ports 80/443 reachable. |
-| **B. Self-signed (default)** | Closed / internal network | `SITE_ADDRESS=:443` — Caddy's local CA issues a self-signed cert. Zero external dependencies. FortiGate must skip cert verification or trust the Caddy root. |
-| **C. Corporate cert** | You have an internal-CA cert for the host | Mount the files (uncomment the `./certs` volume in `docker-compose.yml`) and the `tls /certs/...` line in the Caddyfile. |
+**Setup**
+1. Put the cert and key in `certs/` (git-ignored) — see [certs/README.md](certs/README.md):
+   - `certs/fullchain.pem` — your leaf cert **plus** the GoDaddy intermediate bundle
+   - `certs/privkey.pem` — the matching private key
+2. Add an **internal DNS** A record for a subdomain the wildcard covers, e.g.
+   `fortiwebhook.gss.com.tw` → the service host's internal IP.
+3. Point FortiGate at that FQDN:
+   `https://fortiwebhook.gss.com.tw:18443/webhook/fortigate`.
 
-> Prefer nginx? The app is a plain HTTP upstream on `ipsecalert:8080`; any proxy
-> that terminates TLS and forwards to it works. Caddy is the default only because
-> it needs the least configuration.
+Caddy serves the cert on `:443` (mapped to `HOST_HTTPS_PORT`); FortiGate validates
+it against GoDaddy's public root, and the hostname against the `*.gss.com.tw` SAN.
 
-**FortiGate + self-signed:** FortiGate's webhook validates the server certificate
-by default. On a closed network either import the Caddy local-CA root into
-FortiGate, use a corporate cert (mode C), or use a public cert (mode A).
+> **Use the FQDN, not the IP,** in the FortiGate URL — a wildcard cert matches
+> names, so connecting by IP fails verification. The name only needs to resolve
+> on your internal DNS; no public record is required.
+
+Other options, if ever needed (in the [Caddyfile](Caddyfile)): `tls internal` for
+a self-signed local CA, or a real public domain with automatic Let's Encrypt
+(remove the `tls` line and set `SITE_ADDRESS` to that domain).
 
 ---
 
@@ -87,7 +97,7 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
 | Field | Value |
 |-------|-------|
 | Protocol | HTTPS |
-| URL / URI | `https://<ipsecalert-host>:18443/webhook/fortigate` (or your `HOST_HTTPS_PORT`) |
+| URL / URI | `https://<fqdn>:18443/webhook/fortigate` — the wildcard-covered FQDN (e.g. `fortiwebhook.gss.com.tw`), not the IP |
 | Method | `POST` |
 | HTTP header | `Content-Type: application/json` |
 | HTTP header | `X-Webhook-Token: <the WEBHOOK_TOKEN from your .env>` |
@@ -200,28 +210,27 @@ it should never be internet-facing. Defence in depth, outside-in:
 **Network**
 - Set `FORTIGATE_IPS` to the FortiGate's exact source IP — Caddy `403`s everyone
   else. The default `private_ranges` already blocks any non-internal source.
-- Set `BIND_ADDR` to the internal interface IP so 443 isn't offered elsewhere.
+- Set `BIND_ADDR` to the internal interface IP so the HTTPS port isn't offered elsewhere.
 - Port 80 stays closed (only public-domain ACME would need it).
 - Add a host firewall rule as an independent second layer:
 
 ```
-# nftables: only the FortiGate may reach 443
-nft add rule inet filter input ip saddr 10.10.1.1 tcp dport 443 accept
-nft add rule inet filter input tcp dport 443 drop
+# nftables: only the FortiGate may reach the published HTTPS port
+nft add rule inet filter input ip saddr 10.10.1.1 tcp dport 18443 accept
+nft add rule inet filter input tcp dport 18443 drop
 ```
 
-**TLS — keep FortiGate's certificate verification ON**
-- *Corporate CA (recommended):* issue a host cert from your internal CA and use
-  Caddyfile option C — FortiGate already trusts that root, so it verifies cleanly.
-- *Caddy local CA:* export its root and import it into FortiGate as a trusted CA:
-
-```
-docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
-```
-
-- LDAP uses **LDAPS with certificate validation** (`LDAP_TLS_VALIDATE=true`); set
-  `LDAP_CA_CERT` to your internal CA so the DC cert is verified (blocks MITM).
-  SMTP validates too — set `SMTP_CA_CERT` for an internal-CA relay.
+**TLS — FortiGate verification stays ON, nothing to import**
+- Caddy presents the **company GoDaddy wildcard cert** (`certs/fullchain.pem` +
+  `certs/privkey.pem`). FortiGate already trusts GoDaddy's root, so it verifies
+  both the certificate and the hostname with no extra config — connect via the
+  wildcard FQDN (see §2), never the IP.
+- Keep the key safe: `certs/` is git-ignored (only its README is tracked), the
+  volume is mounted read-only, and `privkey.pem` should be `chmod 600`.
+- LDAP uses **LDAPS with certificate validation** (`LDAP_TLS_VALIDATE=true`). If
+  your DCs present internal AD-CA certs, set `LDAP_CA_CERT` to that CA; if they
+  use the same GoDaddy wildcard, the public trust store already covers them.
+  SMTP validates too — `SMTP_CA_CERT` is only needed for an internal-CA relay.
 
 **Secrets & container**
 - Prefer Docker secrets: set `WEBHOOK_TOKEN_FILE`, `LDAP_BIND_PASSWORD_FILE`,
@@ -242,7 +251,8 @@ docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
 | Symptom | Likely cause |
 |---------|--------------|
 | `/health` shows names in `missing_config` | Those env vars aren't set — fix `.env`, `docker compose up -d`. |
-| FortiGate webhook test fails on TLS | Self-signed cert not trusted — import Caddy's root, use a corporate/public cert, or allow-insecure on the FortiGate side. |
+| FortiGate webhook test fails on TLS | Connect by the wildcard **FQDN** (not IP); ensure `fullchain.pem` includes the GoDaddy **intermediate** bundle and the FQDN resolves internally to this host. |
+| `caddy` fails loading the certificate | `certs/fullchain.pem` / `certs/privkey.pem` missing or unreadable — see [certs/README.md](certs/README.md). |
 | `401` on the webhook | Token header name/value mismatch between FortiGate and `.env`. |
 | `status: email-not-found` | `LDAP_USER_FILTER`/`LDAP_EMAIL_ATTR` wrong, or the account has no `mail`. Check `FALLBACK_EMAIL` inbox. |
 | `502 ldap-error` | Can't reach/bind the DC — check `LDAP_SERVER`, port, SSL, credentials, firewall. |
