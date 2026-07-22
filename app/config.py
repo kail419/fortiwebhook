@@ -91,7 +91,7 @@ class Config:
     mail_cc: List[str] = field(default_factory=list)
     mail_bcc: List[str] = field(default_factory=list)
     mail_reply_to: str = ""
-    mail_subject: str = "[資安通知] 偵測到您的帳號自海外連線 VPN / Security Alert"
+    mail_subject: str = "[資安通知] 您的帳號 VPN 連線通知 / VPN Login Alert"
     org_name: str = ""            # e.g. company / team name, shown in the e-mail
     security_contact: str = ""    # e.g. "資安專線 #1234 / itsec@corp.example.com"
 
@@ -139,7 +139,7 @@ class Config:
             mail_reply_to=os.getenv("MAIL_REPLY_TO", ""),
             mail_subject=os.getenv(
                 "MAIL_SUBJECT",
-                "[資安通知] 偵測到您的帳號自海外連線 VPN / Security Alert",
+                "[資安通知] 您的帳號 VPN 連線通知 / VPN Login Alert",
             ),
             org_name=os.getenv("ORG_NAME", ""),
             security_contact=os.getenv("SECURITY_CONTACT", ""),

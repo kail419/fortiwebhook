@@ -19,6 +19,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # E-mail templates from the repo, so wording tweaks don't need an image
+      # rebuild — edit app/templates/*.j2 then `docker compose restart ipsecalert`.
+      - ./app/templates:/app/app/templates:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status==200 else 1)"]
       interval: 30s
