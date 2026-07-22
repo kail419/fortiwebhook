@@ -109,7 +109,6 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
   "user": "%%log.xauthuser%%",
   "ip": "%%log.remip%%",
   "country": "%%log.srccountry%%",
-  "city": "%%log.srccity%%",
   "time": "%%log.date%% %%log.time%%"
 }
 ```
@@ -118,7 +117,8 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
 > read log fields directly. For IPsec VPN the AD identity is **`xauthuser`**
 > (e.g. `alice@corp`), not `user` (which may be a config/peer name). IPsecAlert
 > normalises `user@domain` / `DOMAIN\user` and also accepts the friendly keys
-> (`ip`, `country`, `city`, …).
+> (`ip`, `country`, `city`, …). The recommended body intentionally omits
+> `city`, because `srccity` is not available for every FortiGate VPN event.
 > If FortiGate does not support a variable for that event and sends the literal
 > placeholder (for example `%%log.srccity%%`), IPsecAlert treats it as missing
 > data instead of displaying the placeholder in the e-mail.

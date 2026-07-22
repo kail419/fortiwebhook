@@ -20,7 +20,6 @@ curl "${CURL_OPTS[@]}" -X POST "$URL" \
         "user": "jdoe",
         "ip": "203.0.113.45",
         "country": "Russian Federation",
-        "city": "Moscow",
         "time": "2026-07-22 09:15:03"
       }'
 echo
