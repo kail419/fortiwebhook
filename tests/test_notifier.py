@@ -5,6 +5,7 @@ from unittest import mock
 
 from app.config import Config
 from app.ldap_lookup import normalize_username
+from app.mailer import MailSendError
 from app.notifier import Notifier, _DedupCache, parse_event
 
 
@@ -88,6 +89,18 @@ class NotifierHandleTests(unittest.TestCase):
         self.assertEqual(first["status"], "sent")
         self.assertEqual(second["reason"], "deduplicated")
         self.assertEqual(send.call_count, 1)
+
+    def test_smtp_failure_releases_dedup_for_retry(self):
+        notifier = Notifier(_base_config())
+        payload = {"user": "jdoe", "ip": "1.2.3.4", "country": "X"}
+        with mock.patch("app.notifier.resolve_email", return_value="jdoe@x"):
+            with mock.patch("app.notifier.send_mail", side_effect=MailSendError("boom")):
+                first = notifier.handle(dict(payload))
+            with mock.patch("app.notifier.send_mail") as send:
+                second = notifier.handle(dict(payload))
+        self.assertEqual(first["status"], "error")       # first send failed
+        self.assertEqual(second["status"], "sent")       # retry NOT deduplicated
+        send.assert_called_once()
 
     def test_sent_path_calls_mailer(self):
         with mock.patch("app.notifier.resolve_email", return_value="jdoe@x") as lookup, \

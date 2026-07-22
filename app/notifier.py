@@ -93,6 +93,11 @@ class _DedupCache:
             self._store[key] = now
             return False
 
+    def release(self, key: str) -> None:
+        """Forget a key so a *failed* attempt doesn't suppress an immediate retry."""
+        with self._lock:
+            self._store.pop(key, None)
+
 
 class Notifier:
     def __init__(self, config: Config):
@@ -125,6 +130,7 @@ class Notifier:
             email = resolve_email(self.config, event.user)
         except LdapLookupError as exc:
             log.error("LDAP lookup failed for user=%s: %s", event.user, exc)
+            self._dedup.release(dedup_key)  # transient failure — allow retry
             self._maybe_fallback(event, reason="ldap-error")
             return {**base, "status": "error", "reason": "ldap-error"}
 
@@ -144,6 +150,7 @@ class Notifier:
             )
         except MailSendError as exc:
             log.error("Failed to send alert to %s: %s", email, exc)
+            self._dedup.release(dedup_key)  # transient failure — allow retry
             return {**base, "status": "error", "reason": "smtp-error", "recipient": email}
 
         log.info("Notified user=%s at %s (country=%s ip=%s)",
