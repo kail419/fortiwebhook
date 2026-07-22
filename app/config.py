@@ -35,6 +35,23 @@ def _get_list(name: str, default: Optional[List[str]] = None) -> List[str]:
     return [item.strip() for item in val.split(",") if item.strip()]
 
 
+def _get_secret(name: str, default: str = "") -> str:
+    """Read a secret from ``$NAME``, or from a file named by ``$NAME_FILE``.
+
+    The file form (Docker/Podman secrets, mounted files) keeps credentials out
+    of the process environment, where they would otherwise be exposed via
+    ``docker inspect`` or ``/proc/<pid>/environ``.
+    """
+    file_path = os.getenv(f"{name}_FILE")
+    if file_path:
+        try:
+            with open(file_path, "r", encoding="utf-8") as handle:
+                return handle.read().strip()
+        except OSError:
+            pass
+    return os.getenv(name, default)
+
+
 @dataclass
 class Config:
     # --- Webhook authentication ---
@@ -49,7 +66,9 @@ class Config:
     # --- LDAP / Active Directory ---
     ldap_server: str = ""            # e.g. "dc01.corp.example.com" or "ldaps://dc01..."
     ldap_port: int = 0               # 0 => let ldap3 choose 389 / 636
-    ldap_use_ssl: bool = False       # True => LDAPS (recommended, port 636)
+    ldap_use_ssl: bool = True        # LDAPS (port 636). Keep on — plain LDAP is cleartext.
+    ldap_tls_validate: bool = True   # verify the DC cert (set ldap_ca_cert for an internal CA)
+    ldap_ca_cert: str = ""           # path to the CA bundle that signed the DC certificate
     ldap_bind_dn: str = ""           # service account: "svc-fgt@corp.example.com" or full DN
     ldap_bind_password: str = ""
     ldap_base_dn: str = ""           # e.g. "DC=corp,DC=example,DC=com"
@@ -65,6 +84,7 @@ class Config:
     smtp_use_starttls: bool = True   # explicit TLS/STARTTLS (usually port 587)
     smtp_username: str = ""
     smtp_password: str = ""
+    smtp_ca_cert: str = ""           # optional CA bundle to trust for the SMTP relay
     smtp_timeout: int = 15
     mail_from: str = ""
     mail_from_name: str = "IT Security Alert"
@@ -87,16 +107,18 @@ class Config:
     @classmethod
     def from_env(cls) -> "Config":
         return cls(
-            webhook_token=os.getenv("WEBHOOK_TOKEN", ""),
+            webhook_token=_get_secret("WEBHOOK_TOKEN"),
             webhook_token_header=os.getenv("WEBHOOK_TOKEN_HEADER", "X-Webhook-Token"),
             listen_host=os.getenv("LISTEN_HOST", "0.0.0.0"),
             listen_port=_get_int("LISTEN_PORT", 8080),
             max_content_length=_get_int("MAX_CONTENT_LENGTH", 64 * 1024),
             ldap_server=os.getenv("LDAP_SERVER", ""),
             ldap_port=_get_int("LDAP_PORT", 0),
-            ldap_use_ssl=_get_bool("LDAP_USE_SSL", False),
+            ldap_use_ssl=_get_bool("LDAP_USE_SSL", True),
+            ldap_tls_validate=_get_bool("LDAP_TLS_VALIDATE", True),
+            ldap_ca_cert=os.getenv("LDAP_CA_CERT", ""),
             ldap_bind_dn=os.getenv("LDAP_BIND_DN", ""),
-            ldap_bind_password=os.getenv("LDAP_BIND_PASSWORD", ""),
+            ldap_bind_password=_get_secret("LDAP_BIND_PASSWORD"),
             ldap_base_dn=os.getenv("LDAP_BASE_DN", ""),
             ldap_user_filter=os.getenv("LDAP_USER_FILTER", "(sAMAccountName={user})"),
             ldap_email_attr=os.getenv("LDAP_EMAIL_ATTR", "mail"),
@@ -107,7 +129,8 @@ class Config:
             smtp_use_ssl=_get_bool("SMTP_USE_SSL", False),
             smtp_use_starttls=_get_bool("SMTP_USE_STARTTLS", True),
             smtp_username=os.getenv("SMTP_USERNAME", ""),
-            smtp_password=os.getenv("SMTP_PASSWORD", ""),
+            smtp_password=_get_secret("SMTP_PASSWORD"),
+            smtp_ca_cert=os.getenv("SMTP_CA_CERT", ""),
             smtp_timeout=_get_int("SMTP_TIMEOUT", 15),
             mail_from=os.getenv("MAIL_FROM", ""),
             mail_from_name=os.getenv("MAIL_FROM_NAME", "IT Security Alert"),

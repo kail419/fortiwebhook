@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import logging
+import ssl
 from typing import Optional
 
-from ldap3 import ALL, SUBTREE, Connection, Server
+from ldap3 import ALL, SUBTREE, Connection, Server, Tls
 from ldap3.core.exceptions import LDAPException
 from ldap3.utils.conv import escape_filter_chars
 
@@ -49,10 +50,21 @@ def resolve_email(config: Config, username: str) -> Optional[str]:
     # Escape the value so a name like ``a)(uid=*`` cannot alter the filter.
     search_filter = config.ldap_user_filter.format(user=escape_filter_chars(account))
 
+    # Over LDAPS, verify the domain controller's certificate (unless explicitly
+    # disabled). Point ldap_ca_cert at your internal root/chain so an internal-CA
+    # DC cert validates; without validation LDAPS is trivially MITM'd.
+    tls_config = None
+    if config.ldap_use_ssl:
+        tls_config = Tls(
+            validate=ssl.CERT_REQUIRED if config.ldap_tls_validate else ssl.CERT_NONE,
+            ca_certs_file=(config.ldap_ca_cert or None),
+        )
+
     server = Server(
         config.ldap_server,
         port=(config.ldap_port or None),   # None => 389 (plain) / 636 (ssl)
         use_ssl=config.ldap_use_ssl,
+        tls=tls_config,
         get_info=ALL,
         connect_timeout=config.ldap_timeout,
     )

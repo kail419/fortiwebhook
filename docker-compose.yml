@@ -6,13 +6,19 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # No host port by default: the app is reachable only through the Caddy
-    # reverse proxy on the internal compose network. Uncomment to expose it
-    # directly on localhost for debugging.
-    # ports:
-    #   - "127.0.0.1:8080:8080"
+    # Reachable only through Caddy on the internal compose network — never
+    # published to the host.
     expose:
       - "8080"
+    # Hardening: no privilege escalation, no Linux capabilities, read-only root
+    # filesystem (the app writes nothing; /tmp is a tmpfs for gunicorn scratch).
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status==200 else 1)"]
       interval: 30s
@@ -32,18 +38,25 @@ services:
     depends_on:
       - ipsecalert
     ports:
-      - "443:443"
-      # Port 80 is only needed for public-domain Let's Encrypt (ACME) challenges
-      # and the HTTP->HTTPS redirect. Harmless to leave open on internal setups.
-      - "80:80"
+      # Bind 443 to ONE internal interface via BIND_ADDR (recommended), e.g.
+      # BIND_ADDR=10.10.1.5 — so the service isn't offered on every interface.
+      - "${BIND_ADDR:-0.0.0.0}:443:443"
+      # Port 80 is only needed for public-domain ACME; keep it closed internally.
+      # - "${BIND_ADDR:-0.0.0.0}:80:80"
     environment:
-      # See Caddyfile. Default ":443" => HTTPS with a self-signed internal cert.
       - SITE_ADDRESS=${SITE_ADDRESS:-:443}
+      - FORTIGATE_IPS=${FORTIGATE_IPS:-private_ranges}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE      # required to bind :443 with all other caps dropped
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data       # persists issued/self-signed certs across restarts
       - caddy_config:/config
-      # Bring-your-own corporate cert (see Caddyfile option C):
+      # Corporate cert (Caddyfile option C):
       # - ./certs:/certs:ro
     logging:
       driver: json-file

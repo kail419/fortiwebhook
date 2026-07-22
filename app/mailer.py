@@ -49,9 +49,13 @@ def send_mail(
 
     recipients = [to_addr, *cc, *bcc]
 
+    # Validating context (default). Trust an internal CA if one is configured.
+    context = ssl.create_default_context()
+    if config.smtp_ca_cert:
+        context.load_verify_locations(config.smtp_ca_cert)
+
     try:
         if config.smtp_use_ssl:
-            context = ssl.create_default_context()
             server = smtplib.SMTP_SSL(
                 config.smtp_host, config.smtp_port,
                 timeout=config.smtp_timeout, context=context,
@@ -63,7 +67,7 @@ def send_mail(
         with server:
             server.ehlo()
             if config.smtp_use_starttls and not config.smtp_use_ssl:
-                server.starttls(context=ssl.create_default_context())
+                server.starttls(context=context)
                 server.ehlo()
             if config.smtp_username:
                 server.login(config.smtp_username, config.smtp_password)

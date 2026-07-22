@@ -1,30 +1,28 @@
-# IPsecAlert — TLS termination + reverse proxy to the app container.
+# IPsecAlert — internal TLS reverse proxy in front of the app.
 #
-# SITE_ADDRESS (from .env / compose) controls what Caddy serves on:
-#   :443                         -> HTTPS on 443 with a self-signed cert from
-#                                   Caddy's built-in local CA. Works with zero
-#                                   external dependencies — ideal for a closed
-#                                   internal network. (This is the default.)
-#   ipsecalert.corp.example.com  -> automatic public HTTPS via Let's Encrypt.
-#                                   Requires the name to resolve publicly and
-#                                   ports 80/443 reachable from the internet.
+# SITE_ADDRESS: what Caddy serves on. Default ":443" => HTTPS with a cert from
+# Caddy's built-in local CA (import its root into FortiGate — see README §7).
+# For a corporate-CA cert, use option C below.
+#
+# FORTIGATE_IPS: source addresses allowed to connect. Default "private_ranges"
+# permits only RFC1918 internal networks; tighten to the FortiGate's exact IP:
+#   FORTIGATE_IPS=10.10.1.1
 {$SITE_ADDRESS::443} {
 
 	# ---- TLS ------------------------------------------------------------
-	# (A) Public domain: leave everything below commented and set SITE_ADDRESS
-	#     to a real domain — Caddy obtains and renews the certificate itself.
-	#
-	# (B) Internal / air-gapped self-signed (explicit): the default ":443"
-	#     already uses Caddy's local CA, so nothing is needed here. If you want
-	#     to be explicit, uncomment:
+	# (A) Public domain: set SITE_ADDRESS to a real name; leave this commented.
+	# (B) Internal self-signed (default): ":443" already uses the local CA.
 	# tls internal
-	#
-	# (C) Bring-your-own corporate certificate: mount the files (see the
-	#     ./certs volume in docker-compose.yml) and uncomment:
+	# (C) Corporate/internal-CA cert (best for "verify on FortiGate"):
 	# tls /certs/fullchain.pem /certs/privkey.pem
 
-	# Only the webhook and health endpoints are reachable from outside;
-	# everything else is refused at the edge.
+	# 1) Reject any source that is not an allowed internal address.
+	@untrusted not remote_ip {$FORTIGATE_IPS:private_ranges}
+	handle @untrusted {
+		respond "Forbidden" 403
+	}
+
+	# 2) Serve ONLY the webhook and health endpoints.
 	@allowed path /webhook/* /health
 	handle @allowed {
 		reverse_proxy ipsecalert:8080 {
@@ -32,6 +30,8 @@
 			header_up X-Forwarded-Proto {scheme}
 		}
 	}
+
+	# 3) Everything else is refused.
 	handle {
 		respond 404
 	}

@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 
 from flask import Flask, jsonify, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
 from .notifier import Notifier
@@ -30,6 +31,9 @@ def create_app(config: Optional[Config] = None) -> Flask:
                     ", ".join(missing))
 
     app = Flask(__name__)
+    # We sit behind exactly one trusted reverse proxy (Caddy). Trust a single hop
+    # of X-Forwarded-* so request.remote_addr is the real client in audit logs.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     app.config["MAX_CONTENT_LENGTH"] = config.max_content_length
     notifier = Notifier(config)
 

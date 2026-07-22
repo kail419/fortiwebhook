@@ -118,15 +118,19 @@ annotated list). Highlights:
 
 | Variable | Purpose |
 |----------|---------|
-| `WEBHOOK_TOKEN` | Shared secret; FortiGate sends it in the `X-Webhook-Token` header. Required. |
+| `WEBHOOK_TOKEN` | Shared secret; FortiGate sends it in the `X-Webhook-Token` header. Required. (`WEBHOOK_TOKEN_FILE` for a Docker secret.) |
 | `SITE_ADDRESS` | What Caddy serves on: `:443` (self-signed, default) or a domain (auto HTTPS). |
-| `LDAP_SERVER`, `LDAP_USE_SSL`, `LDAP_PORT` | Domain controller. Use LDAPS (636). |
-| `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` | Read-only service account to bind with. |
+| `FORTIGATE_IPS` | Source IPs Caddy accepts; `private_ranges` (internal only) → tighten to the FortiGate IP. |
+| `BIND_ADDR` | Host interface the 443 port binds to (set to your internal IP). |
+| `LDAP_SERVER`, `LDAP_USE_SSL`, `LDAP_PORT` | Domain controller. LDAPS (636) is the default. |
+| `LDAP_TLS_VALIDATE`, `LDAP_CA_CERT` | Verify the DC cert (on by default); point at your internal CA bundle. |
+| `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` | Read-only service account to bind with. (`LDAP_BIND_PASSWORD_FILE` for a secret.) |
 | `LDAP_BASE_DN` | Search base, e.g. `DC=corp,DC=example,DC=com`. |
 | `LDAP_USER_FILTER` | Default `(sAMAccountName={user})`. `{user}` is escaped before substitution. |
 | `LDAP_EMAIL_ATTR` | Attribute holding the address (`mail`). |
-| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USE_STARTTLS`/`SMTP_USE_SSL` | Mail relay. |
-| `SMTP_USERNAME`/`SMTP_PASSWORD` | Leave blank for an internal unauthenticated relay. |
+| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USE_STARTTLS`/`SMTP_USE_SSL` | Mail relay (TLS validated). |
+| `SMTP_USERNAME`/`SMTP_PASSWORD` | Leave blank for an internal unauthenticated relay. (`SMTP_PASSWORD_FILE` for a secret.) |
+| `SMTP_CA_CERT` | Optional CA bundle to trust the relay's TLS cert (internal CA). |
 | `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_SUBJECT` | Sender & subject. |
 | `ORG_NAME` | Company/team name shown in the e-mail (blank to omit). |
 | `SECURITY_CONTACT` | Who to contact if the login wasn't the user (shown in the alert). |
@@ -184,17 +188,48 @@ Invoke-RestMethod -Uri "https://<host>/webhook/fortigate" -Method Post `
 
 ---
 
-## 7. Security notes
+## 7. Security — internal deployment
 
-- TLS is terminated by **Caddy**; the token travels encrypted. Still restrict the
-  network so only the FortiGate can reach the proxy.
-- The app container is **not** published to the host — it's only reachable via
-  Caddy on the internal compose network.
-- Use a **read-only** LDAP service account; it never needs write access.
-- The app container runs as a **non-root** user; secrets come from `.env`
-  (git-ignored).
-- LDAP filter input is escaped; e-mail headers are sanitised; HTML values are
-  auto-escaped in the template.
+This service is meant to run on a closed internal network (FortiGate → service);
+it should never be internet-facing. Defence in depth, outside-in:
+
+**Network**
+- Set `FORTIGATE_IPS` to the FortiGate's exact source IP — Caddy `403`s everyone
+  else. The default `private_ranges` already blocks any non-internal source.
+- Set `BIND_ADDR` to the internal interface IP so 443 isn't offered elsewhere.
+- Port 80 stays closed (only public-domain ACME would need it).
+- Add a host firewall rule as an independent second layer:
+
+```
+# nftables: only the FortiGate may reach 443
+nft add rule inet filter input ip saddr 10.10.1.1 tcp dport 443 accept
+nft add rule inet filter input tcp dport 443 drop
+```
+
+**TLS — keep FortiGate's certificate verification ON**
+- *Corporate CA (recommended):* issue a host cert from your internal CA and use
+  Caddyfile option C — FortiGate already trusts that root, so it verifies cleanly.
+- *Caddy local CA:* export its root and import it into FortiGate as a trusted CA:
+
+```
+docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
+```
+
+- LDAP uses **LDAPS with certificate validation** (`LDAP_TLS_VALIDATE=true`); set
+  `LDAP_CA_CERT` to your internal CA so the DC cert is verified (blocks MITM).
+  SMTP validates too — set `SMTP_CA_CERT` for an internal-CA relay.
+
+**Secrets & container**
+- Prefer Docker secrets: set `WEBHOOK_TOKEN_FILE`, `LDAP_BIND_PASSWORD_FILE`,
+  `SMTP_PASSWORD_FILE` to mounted files instead of inline env values.
+- Long random token: `openssl rand -hex 32`. Use a **read-only** LDAP account.
+- Both containers run non-root with `no-new-privileges` and **all capabilities
+  dropped** (`ipsecalert` also has a read-only root filesystem); the app is never
+  published to the host — only Caddy can reach it.
+
+**Application**
+- LDAP filter input is escaped (no injection); e-mail headers sanitised; HTML
+  auto-escaped. The token is compared in constant time and never logged.
 
 ---
 
@@ -208,5 +243,8 @@ Invoke-RestMethod -Uri "https://<host>/webhook/fortigate" -Method Post `
 | `status: email-not-found` | `LDAP_USER_FILTER`/`LDAP_EMAIL_ATTR` wrong, or the account has no `mail`. Check `FALLBACK_EMAIL` inbox. |
 | `502 ldap-error` | Can't reach/bind the DC — check `LDAP_SERVER`, port, SSL, credentials, firewall. |
 | `502 smtp-error` | Relay rejected the mail — check `SMTP_*`, and that `MAIL_FROM` is allowed to relay. |
+| `502 ldap-error` right after enabling TLS | DC cert not trusted — set `LDAP_CA_CERT` to your internal CA (or the cert's SAN doesn't match `LDAP_SERVER`). |
+| `caddy` returns `403` to the FortiGate | Its source IP isn't in `FORTIGATE_IPS` — add it (or widen to `private_ranges`). |
+| App container won't start (read-only FS) | A library needs to write outside `/tmp`; set `read_only: false` on the `ipsecalert` service. |
 
 View logs: `docker compose logs -f`  (add `ipsecalert` or `caddy` for one service)
