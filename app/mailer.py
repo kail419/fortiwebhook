@@ -49,12 +49,14 @@ def send_mail(
 
     recipients = [to_addr, *cc, *bcc]
 
-    # Validating context (default). Trust an internal CA if one is configured.
-    context = ssl.create_default_context()
-    if config.smtp_ca_cert:
-        context.load_verify_locations(config.smtp_ca_cert)
-
     try:
+        # Validating context (default). Trust an internal CA if one is
+        # configured. Keep context setup inside the error boundary so a missing
+        # or unreadable CA file is reported as an SMTP failure, not an HTTP 500.
+        context = ssl.create_default_context()
+        if config.smtp_ca_cert:
+            context.load_verify_locations(config.smtp_ca_cert)
+
         if config.smtp_use_ssl:
             server = smtplib.SMTP_SSL(
                 config.smtp_host, config.smtp_port,
@@ -72,7 +74,7 @@ def send_mail(
             if config.smtp_username and config.smtp_password:
                 server.login(config.smtp_username, config.smtp_password)
             server.send_message(msg, from_addr=config.mail_from, to_addrs=recipients)
-    except (smtplib.SMTPException, OSError) as exc:
+    except (smtplib.SMTPException, OSError, ValueError) as exc:
         raise MailSendError(f"SMTP send failed: {exc}") from exc
 
     log.info("Alert e-mail sent to=%s cc=%s bcc=%d", to_addr, cc, len(bcc))

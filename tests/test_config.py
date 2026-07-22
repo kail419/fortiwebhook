@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from app.config import Config, _get_secret
+from app.config import DEFAULT_MAIL_SUBJECT, LEGACY_MAIL_SUBJECT, Config, _get_secret
 
 
 class GetSecretTests(unittest.TestCase):
@@ -51,6 +51,13 @@ class SecureDefaultsTests(unittest.TestCase):
         self.assertEqual(cfg.webhook_token, "tok")
         self.assertEqual(cfg.ldap_bind_password, "ldp")
         self.assertEqual(cfg.smtp_password, "smp")
+
+    def test_legacy_mail_subject_is_migrated_without_env_changes(self):
+        with mock.patch.dict(
+            os.environ, {"MAIL_SUBJECT": LEGACY_MAIL_SUBJECT}, clear=True
+        ):
+            cfg = Config.from_env()
+        self.assertEqual(cfg.mail_subject, DEFAULT_MAIL_SUBJECT)
 
 
 if __name__ == "__main__":

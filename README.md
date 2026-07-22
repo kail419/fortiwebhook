@@ -151,9 +151,9 @@ annotated list). Highlights:
 | `SMTP_HOST`/`SMTP_PORT`/`SMTP_USE_STARTTLS`/`SMTP_USE_SSL` | Mail relay (TLS validated). |
 | `SMTP_USERNAME`/`SMTP_PASSWORD` | Leave blank for an internal unauthenticated relay. (`SMTP_PASSWORD_FILE` for a secret.) |
 | `SMTP_CA_CERT` | Optional CA bundle to trust the relay's TLS cert (internal CA). |
-| `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_SUBJECT` | Sender & subject. |
+| `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_SUBJECT` | Sender & subject. `MAIL_SUBJECT` supports `{{ country }}` for the event country. |
 | `ORG_NAME` | Company/team name shown in the e-mail (blank to omit). |
-| `SECURITY_CONTACT` | Who to contact if the login wasn't the user (shown in the alert). |
+| `SECURITY_CONTACT` | Retained for existing `.env` compatibility; no longer shown in the alert. |
 | `MAIL_CC`, `MAIL_BCC`, `MAIL_REPLY_TO` | Optional extra recipients (e.g. CC the SOC). |
 | `IGNORE_COUNTRIES` | Comma list of countries to never alert on. |
 | `DEDUP_WINDOW_SECONDS` | Suppress duplicate user+IP alerts within N seconds (default 300). |

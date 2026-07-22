@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, TemplateError
 
 from .config import Config
 from .ldap_lookup import LdapLookupError, resolve_email
@@ -144,7 +144,14 @@ class Notifier:
             return {**base, "status": "skipped", "reason": "email-not-found",
                     "fallback_notified": notified}
 
-        subject, text_body, html_body = self._render(event, recipient=email)
+        try:
+            subject, text_body, html_body = self._render(event, recipient=email)
+        except TemplateError as exc:
+            log.error("Failed to render alert for user=%s: %s", event.user, exc)
+            self._dedup.release(dedup_key)  # repaired templates can retry immediately
+            return {**base, "status": "error", "reason": "template-error",
+                    "recipient": email}
+
         try:
             send_mail(
                 self.config, to_addr=email, subject=subject,
@@ -194,8 +201,8 @@ class Notifier:
             "recipient": recipient,
             "from_name": self.config.mail_from_name,
             "org_name": self.config.org_name,
-            "security_contact": self.config.security_contact,
         }
         text_body = _jinja.get_template("alert.txt.j2").render(**ctx)
         html_body = _jinja.get_template("alert.html.j2").render(**ctx)
-        return self.config.mail_subject, text_body, html_body
+        subject = _jinja.from_string(self.config.mail_subject).render(**ctx)
+        return subject, text_body, html_body

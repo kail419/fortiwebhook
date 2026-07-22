@@ -3,6 +3,8 @@ import time
 import unittest
 from unittest import mock
 
+from jinja2 import TemplateError
+
 from app.config import Config
 from app.ldap_lookup import normalize_username
 from app.mailer import MailSendError
@@ -106,6 +108,21 @@ class NotifierHandleTests(unittest.TestCase):
         self.assertEqual(second["status"], "sent")       # retry NOT deduplicated
         send.assert_called_once()
 
+    def test_template_failure_releases_dedup_for_retry(self):
+        notifier = Notifier(_base_config())
+        payload = {"user": "jdoe", "ip": "1.2.3.4", "country": "X"}
+        rendered = ("subject", "plain", "<p>html</p>")
+        with mock.patch("app.notifier.resolve_email", return_value="jdoe@x"), \
+             mock.patch.object(
+                 notifier, "_render", side_effect=[TemplateError("broken"), rendered]
+             ), \
+             mock.patch("app.notifier.send_mail") as send:
+            first = notifier.handle(dict(payload))
+            second = notifier.handle(dict(payload))
+        self.assertEqual(first["reason"], "template-error")
+        self.assertEqual(second["status"], "sent")
+        send.assert_called_once()
+
     def test_sent_path_calls_mailer(self):
         with mock.patch("app.notifier.resolve_email", return_value="jdoe@x") as lookup, \
              mock.patch("app.notifier.send_mail") as send:
@@ -149,12 +166,37 @@ class RenderTests(unittest.TestCase):
 
     def test_location_combines_city_and_country(self):
         from app.notifier import Event
-        _, text, html = Notifier(_base_config())._render(
+        subject, text, html = Notifier(_base_config())._render(
             Event(user="u", ip="1.1.1.1", country="Taiwan", city="Taichung City", time="t"),
             recipient="u@x",
         )
+        self.assertEqual(
+            subject,
+            "[資安通知] 偵測到您的帳號自 Taiwan 連線 VPN / Security Alert",
+        )
         self.assertIn("Taichung City, Taiwan", text)
         self.assertIn("Taichung City, Taiwan", html)
+
+    def test_warning_has_no_security_contact(self):
+        from app.notifier import Event
+        cfg = _base_config(security_contact="資安專線 #1234")
+        _, text, html = Notifier(cfg)._render(Event(user="u"), recipient="u@x")
+        self.assertIn("⚠ 若「不是」您本人操作", text)
+        self.assertIn("若「不是」您本人操作", html)
+        self.assertNotIn("聯絡窗口", text)
+        self.assertNotIn("聯絡窗口", html)
+        self.assertNotIn("#1234", text)
+        self.assertNotIn("#1234", html)
+        self.assertNotIn("通報資訊安全單位", text)
+        self.assertNotIn("通報資訊安全單位", html)
+
+    def test_static_custom_subject_remains_compatible(self):
+        from app.notifier import Event
+        cfg = _base_config(mail_subject="Existing static subject")
+        subject, _, _ = Notifier(cfg)._render(
+            Event(user="u", country="Taiwan"), recipient="u@x"
+        )
+        self.assertEqual(subject, "Existing static subject")
 
 
 if __name__ == "__main__":

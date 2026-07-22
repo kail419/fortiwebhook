@@ -46,6 +46,17 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_webhook_oversized_body_is_json_413(self):
+        client = create_app(_cfg(max_content_length=16)).test_client()
+        resp = client.post(
+            "/webhook/fortigate",
+            data='{"user":"this-is-larger-than-sixteen-bytes"}',
+            content_type="application/json",
+            headers={"X-Webhook-Token": "secret"},
+        )
+        self.assertEqual(resp.status_code, 413)
+        self.assertEqual(resp.get_json()["reason"], "payload-too-large")
+
     def test_webhook_sent_is_200(self):
         with mock.patch("app.notifier.resolve_email", return_value="jdoe@x"), \
              mock.patch("app.notifier.send_mail"):

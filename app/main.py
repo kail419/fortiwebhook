@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 
 from flask import Flask, jsonify, request
+from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
@@ -36,6 +37,10 @@ def create_app(config: Optional[Config] = None) -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     app.config["MAX_CONTENT_LENGTH"] = config.max_content_length
     notifier = Notifier(config)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_too_large(_error):
+        return jsonify(status="bad-request", reason="payload-too-large"), 413
 
     def _token_ok() -> bool:
         expected = config.webhook_token

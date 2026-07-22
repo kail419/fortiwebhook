@@ -11,6 +11,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
+DEFAULT_MAIL_SUBJECT = (
+    "[資安通知] 偵測到您的帳號自 {{ country }} 連線 VPN / Security Alert"
+)
+LEGACY_MAIL_SUBJECT = "[資安通知] 您的帳號 VPN 連線通知 / VPN Login Alert"
+
+
 def _get_bool(name: str, default: bool = False) -> bool:
     val = os.getenv(name)
     if val is None:
@@ -52,6 +58,12 @@ def _get_secret(name: str, default: str = "") -> str:
     return os.getenv(name, default)
 
 
+def _get_mail_subject() -> str:
+    """Load the subject and migrate the previous example value in-place."""
+    value = os.getenv("MAIL_SUBJECT", DEFAULT_MAIL_SUBJECT)
+    return DEFAULT_MAIL_SUBJECT if value == LEGACY_MAIL_SUBJECT else value
+
+
 @dataclass
 class Config:
     # --- Webhook authentication ---
@@ -91,7 +103,7 @@ class Config:
     mail_cc: List[str] = field(default_factory=list)
     mail_bcc: List[str] = field(default_factory=list)
     mail_reply_to: str = ""
-    mail_subject: str = "[資安通知] 您的帳號 VPN 連線通知 / VPN Login Alert"
+    mail_subject: str = DEFAULT_MAIL_SUBJECT
     org_name: str = ""            # e.g. company / team name, shown in the e-mail
     security_contact: str = ""    # e.g. "資安專線 #1234 / itsec@corp.example.com"
 
@@ -137,10 +149,9 @@ class Config:
             mail_cc=_get_list("MAIL_CC"),
             mail_bcc=_get_list("MAIL_BCC"),
             mail_reply_to=os.getenv("MAIL_REPLY_TO", ""),
-            mail_subject=os.getenv(
-                "MAIL_SUBJECT",
-                "[資安通知] 您的帳號 VPN 連線通知 / VPN Login Alert",
-            ),
+            # Existing .env files with the old example value are migrated by
+            # the loader, while any genuinely custom subject remains unchanged.
+            mail_subject=_get_mail_subject(),
             org_name=os.getenv("ORG_NAME", ""),
             security_contact=os.getenv("SECURITY_CONTACT", ""),
             ignore_countries=[c.lower() for c in _get_list("IGNORE_COUNTRIES")],

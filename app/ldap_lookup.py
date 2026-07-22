@@ -48,7 +48,14 @@ def resolve_email(config: Config, username: str) -> Optional[str]:
         return None
 
     # Escape the value so a name like ``a)(uid=*`` cannot alter the filter.
-    search_filter = config.ldap_user_filter.format(user=escape_filter_chars(account))
+    # Turn a malformed operator-supplied template into the same controlled
+    # infrastructure error as other LDAP failures instead of leaking a 500.
+    try:
+        search_filter = config.ldap_user_filter.format(
+            user=escape_filter_chars(account)
+        )
+    except (IndexError, KeyError, ValueError) as exc:
+        raise LdapLookupError(f"Invalid LDAP_USER_FILTER: {exc}") from exc
 
     # Over LDAPS, verify the domain controller's certificate (unless explicitly
     # disabled). Point ldap_ca_cert at your internal root/chain so an internal-CA
@@ -77,18 +84,22 @@ def resolve_email(config: Config, username: str) -> Optional[str]:
             auto_bind=True,
             receive_timeout=config.ldap_timeout,
         )
-    except LDAPException as exc:
+    except (LDAPException, OSError, ValueError) as exc:
         raise LdapLookupError(f"LDAP bind/connect failed: {exc}") from exc
 
     try:
-        found = conn.search(
+        search_succeeded = conn.search(
             search_base=config.ldap_base_dn,
             search_filter=search_filter,
             search_scope=SUBTREE,
             attributes=[config.ldap_email_attr],
             size_limit=2,
         )
-        if not found or not conn.entries:
+        if not search_succeeded:
+            result = conn.result or {}
+            detail = result.get("message") or result.get("description") or "unknown error"
+            raise LdapLookupError(f"LDAP search was rejected: {detail}")
+        if not conn.entries:
             log.warning("No directory entry for account=%r (filter=%r)",
                         account, search_filter)
             return None
