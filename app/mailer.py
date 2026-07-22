@@ -69,7 +69,7 @@ def send_mail(
             if config.smtp_use_starttls and not config.smtp_use_ssl:
                 server.starttls(context=context)
                 server.ehlo()
-            if config.smtp_username:
+            if config.smtp_username and config.smtp_password:
                 server.login(config.smtp_username, config.smtp_password)
             server.send_message(msg, from_addr=config.mail_from, to_addrs=recipients)
     except (smtplib.SMTPException, OSError) as exc:
