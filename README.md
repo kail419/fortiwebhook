@@ -221,9 +221,11 @@ the existing LDAP settings resolve the account. `EMS_ALERT_TO` is the fallback
 when the user's mailbox cannot be resolved.
 
 Fortinet's public EMS 7.4.7 guide confirms that EMS has an API, but keeps the
-version-specific operations and paths in the authenticated **FortiAPI** tab on
-FNDN. For that reason this project does not guess an unsupported URL. Set
-`EMS_ENDPOINTS_PATH` and the JSON mappings from the EMS 7.4.7 FortiAPI page:
+supported operations in the authenticated **FortiAPI** tab on FNDN. The default
+`EMS_ENDPOINTS_PATH=/api/v1/endpoints/index?offset=0` was observed from an EMS
+7.4.7 web console and remains configurable because UI-facing endpoints may
+change between releases. Confirm the authentication method and JSON mappings
+against the EMS 7.4.7 FortiAPI page:
 
 <https://docs.fortinet.com/document/forticlient/7.4.7/ems-administration-guide/30768/forticlient-ems-api>
 

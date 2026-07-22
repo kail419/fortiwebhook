@@ -10,15 +10,17 @@ from .config import _get_bool, _get_int, _get_list, _get_secret
 
 @dataclass
 class EmsConfig:
-    # Fortinet publishes the version-specific path in the authenticated FNDN
-    # FortiAPI documentation, so it intentionally has no guessed default.
+    # Observed from the EMS 7.4.7 web console. Keep configurable because this
+    # UI-facing endpoint may change between EMS patch releases.
     api_url: str = ""
-    endpoints_path: str = ""
+    endpoints_path: str = "/api/v1/endpoints/index?offset=0"
     api_token: str = ""
     token_header: str = "Authorization"
     token_prefix: str = "Bearer"
-    endpoints_key: str = "data"
-    next_key: str = "next"
+    endpoints_key: str = "data.endpoints"
+    next_key: str = ""
+    total_key: str = "data.total"
+    offset_param: str = "offset"
     timeout: int = 20
     poll_seconds: int = 60
     max_pages: int = 100
@@ -33,16 +35,28 @@ class EmsConfig:
     geoip_db: str = "/geoip/GeoLite2-Country.mmdb"
 
     id_fields: List[str] = field(
-        default_factory=lambda: ["uuid", "endpoint_id", "id", "uid"]
+        default_factory=lambda: [
+            "uid",
+            "device_id",
+            "forticlient_id",
+            "uuid",
+            "endpoint_id",
+            "id",
+        ]
     )
     hostname_fields: List[str] = field(
-        default_factory=lambda: ["hostname", "host_name", "device_name", "name"]
+        default_factory=lambda: ["host", "name", "hostname", "device_name"]
     )
     user_fields: List[str] = field(
-        default_factory=lambda: ["username", "user_name", "user", "logged_in_user"]
+        default_factory=lambda: [
+            "fct_users.0.user_email",
+            "fct_users.0.auth_user_name",
+            "fct_users.0.machine_user_name",
+            "username",
+        ]
     )
     ip_fields: List[str] = field(
-        default_factory=lambda: ["public_ip", "remote_ip", "ip_address", "ip"]
+        default_factory=lambda: ["public_ip_addr", "ip_addr", "public_ip", "ip"]
     )
     country_fields: List[str] = field(
         default_factory=lambda: ["country_code", "country", "geo.country_code"]
@@ -54,7 +68,11 @@ class EmsConfig:
         default_factory=lambda: ["registered_at", "registration_time", "created_at"]
     )
     last_seen_fields: List[str] = field(
-        default_factory=lambda: ["last_seen", "last_seen_at", "last_seen_time"]
+        default_factory=lambda: [
+            "last_seen",
+            "fct_users.0.last_seen",
+            "last_seen_at",
+        ]
     )
     online_values: List[str] = field(
         default_factory=lambda: ["online", "connected", "true", "1"]
@@ -64,12 +82,16 @@ class EmsConfig:
     def from_env(cls) -> "EmsConfig":
         return cls(
             api_url=os.getenv("EMS_API_URL", "").rstrip("/"),
-            endpoints_path=os.getenv("EMS_ENDPOINTS_PATH", ""),
+            endpoints_path=os.getenv(
+                "EMS_ENDPOINTS_PATH", "/api/v1/endpoints/index?offset=0"
+            ),
             api_token=_get_secret("EMS_API_TOKEN"),
             token_header=os.getenv("EMS_API_TOKEN_HEADER", "Authorization"),
             token_prefix=os.getenv("EMS_API_TOKEN_PREFIX", "Bearer"),
-            endpoints_key=os.getenv("EMS_ENDPOINTS_KEY", "data"),
-            next_key=os.getenv("EMS_NEXT_KEY", "next"),
+            endpoints_key=os.getenv("EMS_ENDPOINTS_KEY", "data.endpoints"),
+            next_key=os.getenv("EMS_NEXT_KEY", ""),
+            total_key=os.getenv("EMS_TOTAL_KEY", "data.total"),
+            offset_param=os.getenv("EMS_OFFSET_PARAM", "offset"),
             timeout=_get_int("EMS_API_TIMEOUT", 20),
             poll_seconds=_get_int("EMS_POLL_SECONDS", 60),
             max_pages=_get_int("EMS_MAX_PAGES", 100),
@@ -81,15 +103,31 @@ class EmsConfig:
             home_countries=_get_list("EMS_HOME_COUNTRIES", ["TW", "Taiwan"]),
             state_file=os.getenv("EMS_STATE_FILE", "/data/ems-state.db"),
             geoip_db=os.getenv("EMS_GEOIP_DB", "/geoip/GeoLite2-Country.mmdb"),
-            id_fields=_get_list("EMS_ID_FIELDS", ["uuid", "endpoint_id", "id", "uid"]),
+            id_fields=_get_list(
+                "EMS_ID_FIELDS",
+                [
+                    "uid",
+                    "device_id",
+                    "forticlient_id",
+                    "uuid",
+                    "endpoint_id",
+                    "id",
+                ],
+            ),
             hostname_fields=_get_list(
-                "EMS_HOSTNAME_FIELDS", ["hostname", "host_name", "device_name", "name"]
+                "EMS_HOSTNAME_FIELDS", ["host", "name", "hostname", "device_name"]
             ),
             user_fields=_get_list(
-                "EMS_USER_FIELDS", ["username", "user_name", "user", "logged_in_user"]
+                "EMS_USER_FIELDS",
+                [
+                    "fct_users.0.user_email",
+                    "fct_users.0.auth_user_name",
+                    "fct_users.0.machine_user_name",
+                    "username",
+                ],
             ),
             ip_fields=_get_list(
-                "EMS_IP_FIELDS", ["public_ip", "remote_ip", "ip_address", "ip"]
+                "EMS_IP_FIELDS", ["public_ip_addr", "ip_addr", "public_ip", "ip"]
             ),
             country_fields=_get_list(
                 "EMS_COUNTRY_FIELDS", ["country_code", "country", "geo.country_code"]
@@ -102,7 +140,8 @@ class EmsConfig:
                 ["registered_at", "registration_time", "created_at"],
             ),
             last_seen_fields=_get_list(
-                "EMS_LAST_SEEN_FIELDS", ["last_seen", "last_seen_at", "last_seen_time"]
+                "EMS_LAST_SEEN_FIELDS",
+                ["last_seen", "fct_users.0.last_seen", "last_seen_at"],
             ),
             online_values=[
                 value.lower()

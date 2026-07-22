@@ -7,6 +7,11 @@ from app.ems_config import EmsConfig
 
 
 class EmsConfigTests(unittest.TestCase):
+    def test_ems_747_endpoint_path_is_the_default(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            cfg = EmsConfig.from_env()
+        self.assertEqual(cfg.endpoints_path, "/api/v1/endpoints/index?offset=0")
+
     def test_loads_api_and_field_mapping(self):
         env = {
             "EMS_API_URL": "https://ems.example.com/",

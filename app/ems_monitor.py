@@ -63,6 +63,12 @@ def _lookup(value: Any, path: str) -> Any:
         return value
     current = value
     for part in path.split("."):
+        if isinstance(current, list) and part.isdigit():
+            index = int(part)
+            if index >= len(current):
+                return None
+            current = current[index]
+            continue
         if not isinstance(current, dict) or part not in current:
             return None
         current = current[part]
@@ -113,6 +119,8 @@ def _flatten_keys(record: dict, prefix: str = "") -> List[str]:
         keys.append(path)
         if isinstance(value, dict):
             keys.extend(_flatten_keys(value, path))
+        elif isinstance(value, list) and value and isinstance(value[0], dict):
+            keys.extend(_flatten_keys(value[0], f"{path}.0"))
     return keys
 
 
@@ -164,6 +172,17 @@ class EmsApiClient:
             raise EmsMonitorError("EMS API response is not valid UTF-8 JSON") from exc
 
     def _extract_records(self, payload: Any) -> List[dict]:
+        retval = _lookup(payload, "result.retval")
+        try:
+            failed = retval is not None and int(retval) < 0
+        except (TypeError, ValueError):
+            failed = False
+        if failed:
+            message = _text(_lookup(payload, "result.message"))
+            raise EmsMonitorError(
+                f"EMS API returned retval={retval}: {message or 'request failed'}"
+            )
+
         records = payload if isinstance(payload, list) else _lookup(
             payload, self.config.endpoints_key
         )
@@ -175,6 +194,21 @@ class EmsApiClient:
             )
         return [item for item in records if isinstance(item, dict)]
 
+    @staticmethod
+    def _set_query_value(url: str, name: str, value: int) -> str:
+        parsed = parse.urlsplit(url)
+        query = parse.parse_qs(parsed.query, keep_blank_values=True)
+        query[name] = [str(value)]
+        return parse.urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parse.urlencode(query, doseq=True),
+                parsed.fragment,
+            )
+        )
+
     def fetch_records(self) -> List[dict]:
         url = parse.urljoin(f"{self.config.api_url}/", self.config.endpoints_path)
         records: List[dict] = []
@@ -184,15 +218,33 @@ class EmsApiClient:
                 raise EmsMonitorError("EMS API returned a pagination loop")
             seen_urls.add(url)
             payload = self._request_json(url)
-            records.extend(self._extract_records(payload))
+            page_records = self._extract_records(payload)
+            records.extend(page_records)
             next_value = (
                 _text(_lookup(payload, self.config.next_key))
                 if isinstance(payload, dict) and self.config.next_key
                 else ""
             )
-            if not next_value:
+            if next_value:
+                url = parse.urljoin(url, next_value)
+                continue
+
+            total_value = (
+                _lookup(payload, self.config.total_key)
+                if isinstance(payload, dict) and self.config.total_key
+                else None
+            )
+            try:
+                total = int(total_value) if total_value is not None else None
+            except (TypeError, ValueError):
+                total = None
+            if total is None or len(records) >= total:
                 return records
-            url = parse.urljoin(url, next_value)
+            if not self.config.offset_param or not page_records:
+                raise EmsMonitorError(
+                    "EMS response indicates more records but offset pagination cannot advance"
+                )
+            url = self._set_query_value(url, self.config.offset_param, len(records))
         raise EmsMonitorError(
             f"EMS API exceeded EMS_MAX_PAGES={self.config.max_pages}"
         )

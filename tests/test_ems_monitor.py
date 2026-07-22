@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from unittest import mock
+from urllib import parse
 
 from app.config import Config
 from app.ems_config import EmsConfig
@@ -102,6 +103,24 @@ class EndpointParsingTests(unittest.TestCase):
         self.assertEqual(endpoint.user, "a@example.com")
         self.assertEqual(endpoint.ip, "1.1.1.1")
 
+    def test_reads_user_from_fct_users_array(self):
+        endpoint = parse_endpoint(
+            {
+                "uid": "u1",
+                "host": "LAPTOP-1",
+                "public_ip_addr": "8.8.8.8",
+                "fct_users": [
+                    {
+                        "user_email": "user@example.com",
+                        "last_seen": "2026-07-22T12:00:00Z",
+                    }
+                ],
+            },
+            _ems_config(),
+        )
+        self.assertEqual(endpoint.user, "user@example.com")
+        self.assertEqual(endpoint.last_seen, "2026-07-22T12:00:00Z")
+
     def test_record_without_id_is_skipped(self):
         self.assertIsNone(parse_endpoint({"hostname": "unknown"}, _ems_config()))
 
@@ -117,10 +136,46 @@ class ApiClientTests(unittest.TestCase):
         with self.assertRaisesRegex(EmsMonitorError, "top-level keys"):
             client._extract_records({"results": []})
 
+    def test_reports_expired_ems_session(self):
+        client = EmsApiClient(_ems_config())
+        payload = {
+            "result": {
+                "retval": -4,
+                "message": "Session has expired or does not exist.",
+            }
+        }
+        with self.assertRaisesRegex(EmsMonitorError, "Session has expired"):
+            client._extract_records(payload)
+
     def test_refuses_to_send_token_to_other_origin(self):
         client = EmsApiClient(_ems_config())
         with self.assertRaisesRegex(EmsMonitorError, "outside EMS_API_URL"):
             client._request_json("https://attacker.example/api")
+
+    def test_fetches_all_offset_pages_using_total(self):
+        client = EmsApiClient(
+            _ems_config(
+                endpoints_path="/api/v1/endpoints/index?offset=0",
+                endpoints_key="data.endpoints",
+                total_key="data.total",
+            )
+        )
+        pages = [
+            {
+                "result": {"retval": 0, "message": None},
+                "data": {"endpoints": [{"uid": "1"}, {"uid": "2"}], "total": 3},
+            },
+            {
+                "result": {"retval": 0, "message": None},
+                "data": {"endpoints": [{"uid": "3"}], "total": 3},
+            },
+        ]
+        with mock.patch.object(client, "_request_json", side_effect=pages) as get:
+            records = client.fetch_records()
+
+        self.assertEqual([item["uid"] for item in records], ["1", "2", "3"])
+        second_url = get.call_args_list[1].args[0]
+        self.assertEqual(parse.parse_qs(parse.urlsplit(second_url).query)["offset"], ["2"])
 
 
 class MonitorTransitionTests(unittest.TestCase):
