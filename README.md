@@ -106,16 +106,22 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
 
 ```json
 {
-  "user": "%%user%%",
-  "ip": "%%remip%%",
-  "country": "%%srccountry%%",
-  "time": "%%time%%"
+  "user": "%%log.xauthuser%%",
+  "ip": "%%log.remip%%",
+  "country": "%%log.srccountry%%",
+  "city": "%%log.srccity%%",
+  "time": "%%log.date%% %%log.time%%"
 }
 ```
 
-> The available log variables depend on the triggering event. IPsecAlert also
-> accepts the raw FortiGate field names (`remip`, `srccountry`, …), so you can
-> pass log fields through directly if you prefer.
+> Field names depend on the triggering event; use the `%%log.<field>%%` form to
+> read log fields directly. For IPsec VPN the AD identity is **`xauthuser`**
+> (e.g. `alice@corp`), not `user` (which may be a config/peer name). IPsecAlert
+> normalises `user@domain` / `DOMAIN\user` and also accepts the friendly keys
+> (`ip`, `country`, `city`, …).
+>
+> **Alert once per connection:** filter the trigger to `action=tunnel-up` so
+> rekeys / status-changes / disconnects don't each fire a webhook.
 
 ### 3c. Stitch — tie them together
 `Automation ▸ Automation Stitch ▸ Create New`: pick the trigger from 3a and the

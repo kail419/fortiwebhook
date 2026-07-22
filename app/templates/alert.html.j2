@@ -13,7 +13,7 @@
         <tr><td style="padding:26px 28px 8px;">
           <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">{{ user }} 您好,</p>
           <p style="margin:0 0 20px;font-size:15px;line-height:1.7;">
-            系統偵測到您的帳號建立了一次 VPN（IPsec）連線,來源資訊如下。
+            系統偵測到您的帳號自 <strong>{{ location }}</strong> 的 IP 建立了一次 VPN（IPsec）連線。
             基於帳號安全,特此通知您確認是否為您本人操作。
           </p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 22px;font-size:14px;">
@@ -26,8 +26,8 @@
               <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ ip }}</td>
             </tr>
             <tr>
-              <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;color:#52606d;">國家 Country</td>
-              <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ country }}</td>
+              <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;color:#52606d;">來源位置 Location</td>
+              <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ location }}</td>
             </tr>
             <tr>
               <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;color:#52606d;">時間 Time</td>

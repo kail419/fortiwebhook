@@ -44,6 +44,10 @@ class ParseEventTests(unittest.TestCase):
         self.assertEqual(event.ip, "")
         self.assertEqual(event.country, "")
 
+    def test_city_from_srccity(self):
+        event = parse_event({"user": "jdoe", "srccity": "Taichung City"})
+        self.assertEqual(event.city, "Taichung City")
+
 
 class DedupCacheTests(unittest.TestCase):
     def test_second_hit_within_window_is_deduped(self):
@@ -142,6 +146,15 @@ class RenderTests(unittest.TestCase):
         )
         self.assertNotIn("<b>x</b>", html)
         self.assertIn("&lt;b&gt;x&lt;/b&gt;", html)
+
+    def test_location_combines_city_and_country(self):
+        from app.notifier import Event
+        _, text, html = Notifier(_base_config())._render(
+            Event(user="u", ip="1.1.1.1", country="Taiwan", city="Taichung City", time="t"),
+            recipient="u@x",
+        )
+        self.assertIn("Taichung City, Taiwan", text)
+        self.assertIn("Taichung City, Taiwan", html)
 
 
 if __name__ == "__main__":

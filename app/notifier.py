@@ -38,6 +38,7 @@ _jinja = Environment(
 _USER_KEYS = ("user", "username", "unauthuser")
 _IP_KEYS = ("ip", "remip", "srcip", "remote_ip")
 _COUNTRY_KEYS = ("country", "srccountry", "src_country")
+_CITY_KEYS = ("city", "srccity", "src_city")
 _TIME_KEYS = ("time", "eventtime", "logtime", "date")
 
 
@@ -46,6 +47,7 @@ class Event:
     user: str = ""
     ip: str = ""
     country: str = ""
+    city: str = ""
     time: str = ""
     raw: dict = field(default_factory=dict)
 
@@ -63,6 +65,7 @@ def parse_event(payload: dict) -> Event:
         user=_first(payload, _USER_KEYS),
         ip=_first(payload, _IP_KEYS),
         country=_first(payload, _COUNTRY_KEYS),
+        city=_first(payload, _CITY_KEYS),
         time=_first(payload, _TIME_KEYS),
         raw=payload,
     )
@@ -180,10 +183,13 @@ class Notifier:
             return False
 
     def _render(self, event: Event, recipient: str) -> Tuple[str, str, str]:
+        location = ", ".join(p for p in (event.city, event.country) if p) or "Unknown"
         ctx = {
             "user": event.user,
             "ip": event.ip or "N/A",
             "country": event.country or "Unknown",
+            "city": event.city or "",
+            "location": location,
             "time": event.time or "N/A",
             "recipient": recipient,
             "from_name": self.config.mail_from_name,
