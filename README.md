@@ -252,6 +252,7 @@ nft add rule inet filter input tcp dport 18443 drop
 |---------|--------------|
 | `/health` shows names in `missing_config` | Those env vars aren't set — fix `.env`, `docker compose up -d`. |
 | FortiGate webhook test fails on TLS | Connect by the wildcard **FQDN** (not IP); ensure `fullchain.pem` includes the GoDaddy **intermediate** bundle and the FQDN resolves internally to this host. |
+| `curl … tlsv1 alert internal error` when testing by IP | No SNI is sent for an IP, so Caddy has no cert to present. Test with the FQDN: `curl --resolve <fqdn>:18443:127.0.0.1 https://<fqdn>:18443/health`. `TLS_DEFAULT_SNI` also lets SNI-less/IP clients through. |
 | `caddy` fails loading the certificate | `certs/fullchain.pem` / `certs/privkey.pem` missing or unreadable — see [certs/README.md](certs/README.md). |
 | `401` on the webhook | Token header name/value mismatch between FortiGate and `.env`. |
 | `status: email-not-found` | `LDAP_USER_FILTER`/`LDAP_EMAIL_ATTR` wrong, or the account has no `mail`. Check `FALLBACK_EMAIL` inbox. |

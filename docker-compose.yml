@@ -45,6 +45,7 @@ services:
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS:-:443}
       - FORTIGATE_IPS=${FORTIGATE_IPS:-private_ranges}
+      - TLS_DEFAULT_SNI=${TLS_DEFAULT_SNI:-fortiwebhook.gss.com.tw}
     security_opt:
       - no-new-privileges:true
     cap_drop:

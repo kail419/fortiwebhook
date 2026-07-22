@@ -7,6 +7,15 @@
 # FORTIGATE_IPS: source addresses allowed to connect. Default "private_ranges"
 # permits only RFC1918 internal networks; tighten to the FortiGate's exact IP:
 #   FORTIGATE_IPS=10.10.1.1
+
+# Global options.
+{
+	# Present the cert even when a client sends no SNI (health checks, or curl
+	# to the IP). Must be a name the wildcard covers; FortiGate sends its own SNI
+	# so this doesn't affect it. Override with TLS_DEFAULT_SNI if your domain differs.
+	default_sni {$TLS_DEFAULT_SNI:fortiwebhook.gss.com.tw}
+}
+
 {$SITE_ADDRESS::443} {
 
 	# ---- TLS: company GoDaddy wildcard cert (mounted at /certs) ----------
