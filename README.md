@@ -38,13 +38,16 @@ self-signed certificate from its own local CA — no domain or internet needed.
 Verify (the `-k` accepts the self-signed cert):
 
 ```bash
-curl -k https://<host>/health
+curl -k https://<host>:18443/health
 # {"status":"ok","missing_config":[]}   <- missing_config must be empty
 
 # Send a test event:
 INSECURE=1 WEBHOOK_TOKEN=$(grep ^WEBHOOK_TOKEN= .env | cut -d= -f2) \
-  ./scripts/send_test_webhook.sh https://127.0.0.1/webhook/fortigate
+  ./scripts/send_test_webhook.sh https://127.0.0.1:18443/webhook/fortigate
 ```
+
+> HTTPS is published on host port **18443** by default (443 is left for other
+> services such as avss). Change it with `HOST_HTTPS_PORT` in `.env`.
 
 ---
 
@@ -84,7 +87,7 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
 | Field | Value |
 |-------|-------|
 | Protocol | HTTPS |
-| URL / URI | `https://<ipsecalert-host>/webhook/fortigate` |
+| URL / URI | `https://<ipsecalert-host>:18443/webhook/fortigate` (or your `HOST_HTTPS_PORT`) |
 | Method | `POST` |
 | HTTP header | `Content-Type: application/json` |
 | HTTP header | `X-Webhook-Token: <the WEBHOOK_TOKEN from your .env>` |
@@ -121,7 +124,8 @@ annotated list). Highlights:
 | `WEBHOOK_TOKEN` | Shared secret; FortiGate sends it in the `X-Webhook-Token` header. Required. (`WEBHOOK_TOKEN_FILE` for a Docker secret.) |
 | `SITE_ADDRESS` | What Caddy serves on: `:443` (self-signed, default) or a domain (auto HTTPS). |
 | `FORTIGATE_IPS` | Source IPs Caddy accepts; `private_ranges` (internal only) → tighten to the FortiGate IP. |
-| `BIND_ADDR` | Host interface the 443 port binds to (set to your internal IP). |
+| `BIND_ADDR` | Host interface the HTTPS port binds to (set to your internal IP). |
+| `HOST_HTTPS_PORT` | Host port published for HTTPS (default `18443`; keeps off 443). |
 | `LDAP_SERVER`, `LDAP_USE_SSL`, `LDAP_PORT` | Domain controller. LDAPS (636) is the default. |
 | `LDAP_TLS_VALIDATE`, `LDAP_CA_CERT` | Verify the DC cert (on by default); point at your internal CA bundle. |
 | `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` | Read-only service account to bind with. (`LDAP_BIND_PASSWORD_FILE` for a secret.) |
@@ -174,14 +178,14 @@ pip install -r requirements.txt
 python -m unittest discover -s tests -t .
 
 # End-to-end against the running stack (self-signed cert):
-INSECURE=1 ./scripts/send_test_webhook.sh https://127.0.0.1/webhook/fortigate
+INSECURE=1 ./scripts/send_test_webhook.sh https://127.0.0.1:18443/webhook/fortigate
 ```
 
 From a Windows box (PowerShell); `-SkipCertificateCheck` for the self-signed cert:
 
 ```powershell
 $body = @{ user="jdoe"; ip="203.0.113.45"; country="Russian Federation"; time="2026-07-22 09:15:03" } | ConvertTo-Json
-Invoke-RestMethod -Uri "https://<host>/webhook/fortigate" -Method Post `
+Invoke-RestMethod -Uri "https://<host>:18443/webhook/fortigate" -Method Post `
   -ContentType "application/json" -SkipCertificateCheck `
   -Headers @{ "X-Webhook-Token" = "<your-token>" } -Body $body
 ```
@@ -245,6 +249,7 @@ docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
 | `502 smtp-error` | Relay rejected the mail — check `SMTP_*`, and that `MAIL_FROM` is allowed to relay. |
 | `502 ldap-error` right after enabling TLS | DC cert not trusted — set `LDAP_CA_CERT` to your internal CA (or the cert's SAN doesn't match `LDAP_SERVER`). |
 | `caddy` returns `403` to the FortiGate | Its source IP isn't in `FORTIGATE_IPS` — add it (or widen to `private_ranges`). |
+| `caddy` fails: `port is already allocated` | Another service (e.g. avss) holds that host port — change `HOST_HTTPS_PORT` in `.env` and re-run `docker compose up -d`. |
 | App container won't start (read-only FS) | A library needs to write outside `/tmp`; set `read_only: false` on the `ipsecalert` service. |
 
 View logs: `docker compose logs -f`  (add `ipsecalert` or `caddy` for one service)

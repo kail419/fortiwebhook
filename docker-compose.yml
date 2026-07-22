@@ -38,11 +38,10 @@ services:
     depends_on:
       - ipsecalert
     ports:
-      # Bind 443 to ONE internal interface via BIND_ADDR (recommended), e.g.
-      # BIND_ADDR=10.10.1.5 — so the service isn't offered on every interface.
-      - "${BIND_ADDR:-0.0.0.0}:443:443"
-      # Port 80 is only needed for public-domain ACME; keep it closed internally.
-      # - "${BIND_ADDR:-0.0.0.0}:80:80"
+      # Published on HOST_HTTPS_PORT (default 18443) to avoid clashing with other
+      # services on this host (e.g. avss on 443). The container still serves HTTPS
+      # on 443 internally. Bind to ONE interface via BIND_ADDR (recommended).
+      - "${BIND_ADDR:-0.0.0.0}:${HOST_HTTPS_PORT:-18443}:443"
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS:-:443}
       - FORTIGATE_IPS=${FORTIGATE_IPS:-private_ranges}
