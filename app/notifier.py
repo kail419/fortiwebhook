@@ -180,6 +180,8 @@ class Notifier:
             "time": event.time or "N/A",
             "recipient": recipient,
             "from_name": self.config.mail_from_name,
+            "org_name": self.config.org_name,
+            "security_contact": self.config.security_contact,
         }
         text_body = _jinja.get_template("alert.txt.j2").render(**ctx)
         html_body = _jinja.get_template("alert.html.j2").render(**ctx)

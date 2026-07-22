@@ -1,20 +1,28 @@
-【資訊安全通知 / Security Alert】
+【資訊安全警示 / Security Alert】
 
-{{ user }} 您好：
+{{ user }} 您好,
 
-系統偵測到您的帳號剛從「海外 IP」建立 VPN（IPsec）連線。
-若這是您本人操作，請忽略本信；若「不是您本人」，代表帳號可能已外洩，
-請立即依下方步驟處理。
+系統偵測到您的帳號剛剛自「海外 IP」建立 VPN（IPsec）連線。
+基於帳號安全,特此通知您確認本次連線是否為您本人操作。
 
 ── 連線資訊 / Connection details ──
-帳號 User      : {{ user }}
-來源 IP Source : {{ ip }}
-國家 Country   : {{ country }}
-時間 Time      : {{ time }}
+  帳號 Account : {{ user }}
+  來源 IP      : {{ ip }}
+  國家 Country : {{ country }}
+  時間 Time    : {{ time }}
 
-如非本人操作，請立即：
-  1. 更改您的網域（AD）密碼。
-  2. 聯繫資訊安全單位 / IT 服務台。
+■ 若確認是您本人操作
+  無須採取任何行動,可直接忽略本通知。
 
-本信為系統自動發送，請勿直接回覆。
-This is an automated message from {{ from_name }}. Please do not reply.
+■ 若「不是」您本人操作（您的帳號可能已遭盜用,請立即處理）：
+  1. 立即變更您的網域（AD）密碼。
+  2. 通報資訊安全單位協助確認。
+{% if security_contact %}
+  聯絡窗口：{{ security_contact }}
+{% endif %}
+
+本信由系統自動發送,請勿直接回覆。
+This is an automated security notification. Please do not reply.
+{% if org_name %}
+—— {{ org_name }} 資訊安全中心
+{% endif %}

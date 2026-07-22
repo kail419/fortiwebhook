@@ -72,6 +72,8 @@ class Config:
     mail_bcc: List[str] = field(default_factory=list)
     mail_reply_to: str = ""
     mail_subject: str = "[資安通知] 偵測到您的帳號自海外連線 VPN / Security Alert"
+    org_name: str = ""            # e.g. company / team name, shown in the e-mail
+    security_contact: str = ""    # e.g. "資安專線 #1234 / itsec@corp.example.com"
 
     # --- Behaviour ---
     ignore_countries: List[str] = field(default_factory=list)   # lower-cased
@@ -116,6 +118,8 @@ class Config:
                 "MAIL_SUBJECT",
                 "[資安通知] 偵測到您的帳號自海外連線 VPN / Security Alert",
             ),
+            org_name=os.getenv("ORG_NAME", ""),
+            security_contact=os.getenv("SECURITY_CONTACT", ""),
             ignore_countries=[c.lower() for c in _get_list("IGNORE_COUNTRIES")],
             dedup_window_seconds=_get_int("DEDUP_WINDOW_SECONDS", 300),
             fallback_email=os.getenv("FALLBACK_EMAIL", ""),

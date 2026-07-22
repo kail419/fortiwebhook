@@ -6,9 +6,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      # host:container — change the host port if 8080 is taken.
-      - "8080:8080"
+    # No host port by default: the app is reachable only through the Caddy
+    # reverse proxy on the internal compose network. Uncomment to expose it
+    # directly on localhost for debugging.
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+    expose:
+      - "8080"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status==200 else 1)"]
       interval: 30s
@@ -20,3 +24,33 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  caddy:
+    image: caddy:2
+    container_name: ipsecalert-caddy
+    restart: unless-stopped
+    depends_on:
+      - ipsecalert
+    ports:
+      - "443:443"
+      # Port 80 is only needed for public-domain Let's Encrypt (ACME) challenges
+      # and the HTTP->HTTPS redirect. Harmless to leave open on internal setups.
+      - "80:80"
+    environment:
+      # See Caddyfile. Default ":443" => HTTPS with a self-signed internal cert.
+      - SITE_ADDRESS=${SITE_ADDRESS:-:443}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # persists issued/self-signed certs across restarts
+      - caddy_config:/config
+      # Bring-your-own corporate cert (see Caddyfile option C):
+      # - ./certs:/certs:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:

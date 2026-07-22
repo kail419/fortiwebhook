@@ -1,52 +1,67 @@
-<div style="margin:0;padding:0;background:#f4f5f7;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:'Segoe UI','Microsoft JhengHei',Arial,sans-serif;color:#1f2933;">
-          <tr>
-            <td style="background:#c0392b;padding:20px 28px;color:#ffffff;font-size:18px;font-weight:bold;">
-              &#9888;&#65039; 資訊安全通知 &middot; Security Alert
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:28px;">
-              <p style="margin:0 0 14px;font-size:15px;line-height:1.6;">{{ user }} 您好：</p>
-              <p style="margin:0 0 18px;font-size:15px;line-height:1.6;">
-                系統偵測到您的帳號剛從 <strong>海外 IP</strong> 建立 VPN（IPsec）連線。<br>
-                若這是您本人操作，請忽略本信；<strong style="color:#c0392b;">若不是您本人</strong>，
-                您的帳號可能已外洩，請立即依下方步驟處理。
-              </p>
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 20px;font-size:14px;">
-                <tr>
-                  <td style="padding:10px 12px;background:#f4f5f7;border:1px solid #e4e7eb;width:130px;">帳號 User</td>
-                  <td style="padding:10px 12px;border:1px solid #e4e7eb;"><strong>{{ user }}</strong></td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 12px;background:#f4f5f7;border:1px solid #e4e7eb;">來源 IP Source</td>
-                  <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ ip }}</td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 12px;background:#f4f5f7;border:1px solid #e4e7eb;">國家 Country</td>
-                  <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ country }}</td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 12px;background:#f4f5f7;border:1px solid #e4e7eb;">時間 Time</td>
-                  <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ time }}</td>
-                </tr>
-              </table>
-              <p style="margin:0 0 8px;font-size:15px;font-weight:bold;">如非本人操作，請立即：</p>
-              <ol style="margin:0 0 18px;padding-left:20px;font-size:14px;line-height:1.7;">
-                <li>更改您的網域（AD）密碼。</li>
-                <li>聯繫資訊安全單位 / IT 服務台。</li>
+<div style="margin:0;padding:0;background:#eef0f3;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;font-family:'Segoe UI','Microsoft JhengHei','PingFang TC',Arial,sans-serif;color:#1f2933;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#b91c1c;padding:18px 28px;color:#ffffff;">
+            <div style="font-size:19px;font-weight:700;letter-spacing:.5px;">&#9888;&#65039; 資訊安全警示 &middot; Security Alert</div>
+            {% if org_name %}
+            <div style="font-size:12px;opacity:.85;margin-top:3px;">{{ org_name }} 資訊安全中心</div>
+            {% endif %}
+          </td>
+        </tr>
+        <tr><td style="padding:26px 28px 8px;">
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">{{ user }} 您好,</p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.7;">
+            系統偵測到您的帳號剛剛自 <strong>海外 IP</strong> 建立 VPN（IPsec）連線。
+            基於帳號安全,特此通知您確認本次連線是否為您本人操作。
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 22px;font-size:14px;">
+            <tr>
+              <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;width:130px;color:#52606d;">帳號 Account</td>
+              <td style="padding:10px 12px;border:1px solid #e4e7eb;"><strong>{{ user }}</strong></td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;color:#52606d;">來源 IP</td>
+              <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ ip }}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;color:#52606d;">國家 Country</td>
+              <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ country }}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;background:#f5f6f8;border:1px solid #e4e7eb;color:#52606d;">時間 Time</td>
+              <td style="padding:10px 12px;border:1px solid #e4e7eb;">{{ time }}</td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 12px;">
+            <tr><td style="padding:12px 14px;background:#ecfdf3;border-left:4px solid #12b76a;border-radius:4px;font-size:14px;line-height:1.6;">
+              <strong style="color:#027a48;">&#10004; 若確認是您本人操作</strong><br>
+              無須採取任何行動,可直接忽略本通知。
+            </td></tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 20px;">
+            <tr><td style="padding:12px 14px;background:#fef3f2;border-left:4px solid #f04438;border-radius:4px;font-size:14px;line-height:1.6;">
+              <strong style="color:#b42318;">&#9888; 若「不是」您本人操作</strong><br>
+              您的帳號可能已遭盜用,請立即：
+              <ol style="margin:8px 0 0;padding-left:20px;">
+                <li>變更您的網域（AD）密碼。</li>
+                <li>通報資訊安全單位協助確認。</li>
               </ol>
-              <p style="margin:0;font-size:12px;color:#7b8794;line-height:1.6;">
-                本信為系統自動發送，請勿直接回覆。<br>
-                This is an automated message from {{ from_name }}. Please do not reply.
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
+              {% if security_contact %}
+              <div style="margin-top:8px;">聯絡窗口：<strong>{{ security_contact }}</strong></div>
+              {% endif %}
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:16px 28px 24px;border-top:1px solid #eef0f3;">
+          <p style="margin:0;font-size:12px;color:#7b8794;line-height:1.6;">
+            本信由系統自動發送,請勿直接回覆。<br>
+            This is an automated security notification. Please do not reply.
+            {% if org_name %}<br>—— {{ org_name }}{% endif %}
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
   </table>
 </div>

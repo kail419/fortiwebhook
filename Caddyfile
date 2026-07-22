@@ -1,0 +1,51 @@
+# IPsecAlert — TLS termination + reverse proxy to the app container.
+#
+# SITE_ADDRESS (from .env / compose) controls what Caddy serves on:
+#   :443                         -> HTTPS on 443 with a self-signed cert from
+#                                   Caddy's built-in local CA. Works with zero
+#                                   external dependencies — ideal for a closed
+#                                   internal network. (This is the default.)
+#   ipsecalert.corp.example.com  -> automatic public HTTPS via Let's Encrypt.
+#                                   Requires the name to resolve publicly and
+#                                   ports 80/443 reachable from the internet.
+{$SITE_ADDRESS::443} {
+
+	# ---- TLS ------------------------------------------------------------
+	# (A) Public domain: leave everything below commented and set SITE_ADDRESS
+	#     to a real domain — Caddy obtains and renews the certificate itself.
+	#
+	# (B) Internal / air-gapped self-signed (explicit): the default ":443"
+	#     already uses Caddy's local CA, so nothing is needed here. If you want
+	#     to be explicit, uncomment:
+	# tls internal
+	#
+	# (C) Bring-your-own corporate certificate: mount the files (see the
+	#     ./certs volume in docker-compose.yml) and uncomment:
+	# tls /certs/fullchain.pem /certs/privkey.pem
+
+	# Only the webhook and health endpoints are reachable from outside;
+	# everything else is refused at the edge.
+	@allowed path /webhook/* /health
+	handle @allowed {
+		reverse_proxy ipsecalert:8080 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
