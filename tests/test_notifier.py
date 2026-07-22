@@ -187,6 +187,15 @@ class RenderTests(unittest.TestCase):
         )
         self.assertIn("Taichung City, Taiwan", text)
         self.assertIn("Taichung City, Taiwan", html)
+        self.assertIn(
+            "系統偵測到您的帳號自 Taichung City, Taiwan 建立了 VPN 連線。",
+            text,
+        )
+        self.assertIn("建立了 VPN 連線。", html)
+        self.assertNotIn("建立了一次", text)
+        self.assertNotIn("建立了一次", html)
+        self.assertNotIn("VPN（IPsec）", text)
+        self.assertNotIn("VPN（IPsec）", html)
 
     def test_location_omits_unexpanded_city_variable(self):
         event = parse_event(
