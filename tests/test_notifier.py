@@ -50,6 +50,17 @@ class ParseEventTests(unittest.TestCase):
         event = parse_event({"user": "jdoe", "srccity": "Taichung City"})
         self.assertEqual(event.city, "Taichung City")
 
+    def test_unexpanded_fortigate_variables_are_ignored(self):
+        event = parse_event(
+            {
+                "user": "jdoe",
+                "city": "%%log.srccity%%",
+                "country": "Taiwan",
+            }
+        )
+        self.assertEqual(event.city, "")
+        self.assertEqual(event.country, "Taiwan")
+
 
 class DedupCacheTests(unittest.TestCase):
     def test_second_hit_within_window_is_deduped(self):
@@ -176,6 +187,16 @@ class RenderTests(unittest.TestCase):
         )
         self.assertIn("Taichung City, Taiwan", text)
         self.assertIn("Taichung City, Taiwan", html)
+
+    def test_location_omits_unexpanded_city_variable(self):
+        event = parse_event(
+            {"user": "u", "city": "%%log.srccity%%", "country": "Taiwan"}
+        )
+        _, text, html = Notifier(_base_config())._render(event, recipient="u@x")
+        self.assertIn("位置 Location: Taiwan", text)
+        self.assertIn(">Taiwan</td>", html)
+        self.assertNotIn("%%log.srccity%%", text)
+        self.assertNotIn("%%log.srccity%%", html)
 
     def test_warning_has_no_security_contact(self):
         from app.notifier import Event

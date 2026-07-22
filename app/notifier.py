@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ _IP_KEYS = ("ip", "remip", "srcip", "remote_ip")
 _COUNTRY_KEYS = ("country", "srccountry", "src_country")
 _CITY_KEYS = ("city", "srccity", "src_city")
 _TIME_KEYS = ("time", "eventtime", "logtime", "date")
+_UNEXPANDED_FORTIGATE_VARIABLE = re.compile(r"^%%[^%\r\n]+%%$")
 
 
 @dataclass
@@ -55,8 +57,13 @@ class Event:
 def _first(payload: dict, keys: Tuple[str, ...]) -> str:
     for key in keys:
         value = payload.get(key)
-        if value is not None and str(value).strip():
-            return str(value).strip()
+        if value is not None:
+            text = str(value).strip()
+            # FortiGate leaves unsupported log variables untouched. Treat a
+            # literal such as %%log.srccity%% as missing data rather than
+            # exposing the template expression in the notification.
+            if text and not _UNEXPANDED_FORTIGATE_VARIABLE.fullmatch(text):
+                return text
     return ""
 
 

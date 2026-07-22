@@ -119,6 +119,9 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
 > (e.g. `alice@corp`), not `user` (which may be a config/peer name). IPsecAlert
 > normalises `user@domain` / `DOMAIN\user` and also accepts the friendly keys
 > (`ip`, `country`, `city`, …).
+> If FortiGate does not support a variable for that event and sends the literal
+> placeholder (for example `%%log.srccity%%`), IPsecAlert treats it as missing
+> data instead of displaying the placeholder in the e-mail.
 >
 > **Alert once per connection:** filter the trigger to `action=tunnel-up` so
 > rekeys / status-changes / disconnects don't each fire a webhook.
