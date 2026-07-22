@@ -1,4 +1,5 @@
 """Unit tests for EMS parsing, state transitions, and user notifications."""
+import sqlite3
 import tempfile
 import unittest
 from unittest import mock
@@ -109,6 +110,8 @@ class EndpointParsingTests(unittest.TestCase):
                 "uid": "u1",
                 "host": "LAPTOP-1",
                 "public_ip_addr": "8.8.8.8",
+                "is_ems_online": True,
+                "is_ems_registered": True,
                 "fct_users": [
                     {
                         "user_email": "user@example.com",
@@ -120,6 +123,8 @@ class EndpointParsingTests(unittest.TestCase):
         )
         self.assertEqual(endpoint.user, "user@example.com")
         self.assertEqual(endpoint.last_seen, "2026-07-22T12:00:00Z")
+        self.assertEqual(endpoint.status, "online")
+        self.assertEqual(endpoint.registration_status, "registered")
 
     def test_record_without_id_is_skipped(self):
         self.assertIsNone(parse_endpoint({"hostname": "unknown"}, _ems_config()))
@@ -175,7 +180,45 @@ class ApiClientTests(unittest.TestCase):
 
         self.assertEqual([item["uid"] for item in records], ["1", "2", "3"])
         second_url = get.call_args_list[1].args[0]
-        self.assertEqual(parse.parse_qs(parse.urlsplit(second_url).query)["offset"], ["2"])
+        self.assertEqual(
+            parse.parse_qs(parse.urlsplit(second_url).query)["offset"], ["2"]
+        )
+
+
+class StateStoreTests(unittest.TestCase):
+    def test_adds_registration_status_to_existing_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/state.db"
+            connection = sqlite3.connect(path)
+            connection.execute(
+                """
+                CREATE TABLE endpoint_state (
+                    endpoint_id TEXT PRIMARY KEY,
+                    hostname TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    ip TEXT NOT NULL,
+                    country_code TEXT NOT NULL,
+                    country_name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    registered_at TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.commit()
+            connection.close()
+
+            state = StateStore(path)
+            columns = {
+                row[1]
+                for row in state.connection.execute(
+                    "PRAGMA table_info(endpoint_state)"
+                ).fetchall()
+            }
+            state.close()
+
+        self.assertIn("registration_status", columns)
 
 
 class MonitorTransitionTests(unittest.TestCase):
@@ -226,6 +269,20 @@ class MonitorTransitionTests(unittest.TestCase):
         self.api.records = [_record(status="online")]
         self.monitor.run_once()
         self.assertEqual(self.mailer.sent[0][0].kind, "overseas-online")
+
+    def test_unregistered_to_registered_overseas_alerts(self):
+        self.api.records = [_record(is_ems_registered=False)]
+        self.monitor.run_once()
+        self.api.records = [_record(is_ems_registered=True)]
+        self.monitor.run_once()
+        self.assertEqual(self.mailer.sent[0][0].kind, "overseas-registration")
+
+    def test_blank_legacy_state_does_not_create_upgrade_alert(self):
+        self.api.records = [_record(status="", is_ems_registered="")]
+        self.monitor.run_once()
+        self.api.records = [_record(is_ems_online=True, is_ems_registered=True)]
+        result = self.monitor.run_once()
+        self.assertEqual(result["alerts"], 0)
 
     def test_foreign_ip_change_alerts(self):
         self.api.records = [_record(public_ip="8.8.8.8")]

@@ -45,6 +45,7 @@ class Endpoint:
     country_code: str = ""
     country_name: str = ""
     status: str = ""
+    registration_status: str = ""
     registered_at: str = ""
     last_seen: str = ""
 
@@ -100,13 +101,24 @@ def parse_endpoint(record: dict, config: EmsConfig) -> Optional[Endpoint]:
     endpoint_id = _first(record, config.id_fields)
     if not endpoint_id:
         return None
+    status = _first(record, config.status_fields).lower()
+    if status in config.online_values:
+        status = "online"
+    elif status in {"false", "0", "offline", "disconnected"}:
+        status = "offline"
+    registration_status = _first(record, config.registration_status_fields).lower()
+    if registration_status in config.registered_values:
+        registration_status = "registered"
+    elif registration_status in {"false", "0", "unregistered"}:
+        registration_status = "unregistered"
     return Endpoint(
         endpoint_id=endpoint_id,
         hostname=_first(record, config.hostname_fields),
         user=_first(record, config.user_fields),
         ip=_first(record, config.ip_fields),
         country_code=_first(record, config.country_fields),
-        status=_first(record, config.status_fields).lower(),
+        status=status,
+        registration_status=registration_status,
         registered_at=_first(record, config.registered_fields),
         last_seen=_first(record, config.last_seen_fields),
     )
@@ -295,12 +307,24 @@ class StateStore:
                     country_code TEXT NOT NULL,
                     country_name TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    registration_status TEXT NOT NULL DEFAULT '',
                     registered_at TEXT NOT NULL,
                     last_seen TEXT NOT NULL,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in self.connection.execute(
+                    "PRAGMA table_info(endpoint_state)"
+                ).fetchall()
+            }
+            if "registration_status" not in columns:
+                self.connection.execute(
+                    "ALTER TABLE endpoint_state "
+                    "ADD COLUMN registration_status TEXT NOT NULL DEFAULT ''"
+                )
 
     def close(self) -> None:
         self.connection.close()
@@ -332,6 +356,7 @@ class StateStore:
             country_code=row["country_code"],
             country_name=row["country_name"],
             status=row["status"],
+            registration_status=row["registration_status"],
             registered_at=row["registered_at"],
             last_seen=row["last_seen"],
         )
@@ -342,8 +367,9 @@ class StateStore:
                 """
                 INSERT INTO endpoint_state(
                     endpoint_id, hostname, user_name, ip, country_code,
-                    country_name, status, registered_at, last_seen
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    country_name, status, registration_status, registered_at,
+                    last_seen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(endpoint_id) DO UPDATE SET
                     hostname=excluded.hostname,
                     user_name=excluded.user_name,
@@ -351,6 +377,7 @@ class StateStore:
                     country_code=excluded.country_code,
                     country_name=excluded.country_name,
                     status=excluded.status,
+                    registration_status=excluded.registration_status,
                     registered_at=excluded.registered_at,
                     last_seen=excluded.last_seen,
                     updated_at=CURRENT_TIMESTAMP
@@ -363,6 +390,7 @@ class StateStore:
                     endpoint.country_code,
                     endpoint.country_name,
                     endpoint.status,
+                    endpoint.registration_status,
                     endpoint.registered_at,
                     endpoint.last_seen,
                 ),
@@ -420,7 +448,12 @@ class EmsMonitor:
         self.home_countries = {value.strip().lower() for value in config.home_countries}
 
     def _is_online(self, endpoint: Endpoint) -> bool:
-        return endpoint.status.lower() in self.config.online_values
+        status = endpoint.status.lower()
+        return status == "online" or status in self.config.online_values
+
+    def _is_registered(self, endpoint: Endpoint) -> bool:
+        status = endpoint.registration_status.lower()
+        return status == "registered" or status in self.config.registered_values
 
     def _is_foreign(self, endpoint: Endpoint) -> bool:
         values = {endpoint.country_code.lower(), endpoint.country_name.lower()} - {""}
@@ -436,14 +469,24 @@ class EmsMonitor:
 
     def _detect(self, current: Endpoint, previous: Optional[Endpoint]) -> Optional[Alert]:
         if previous is None:
-            if self._is_foreign(current):
+            if self._is_foreign(current) and (
+                self._is_online(current) or self._is_registered(current)
+            ):
                 return Alert("overseas-registration", "海外新裝置連線", current, previous)
             return None
-        if not (self._is_online(current) and self._is_foreign(current)):
+        if not self._is_foreign(current):
             return None
-        if not self._is_online(previous):
-            return Alert("overseas-online", "海外裝置上線", current, previous)
-        if current.ip and current.ip != previous.ip:
+        if (
+            self._is_registered(current)
+            and previous.registration_status
+            and not self._is_registered(previous)
+        ):
+            return Alert("overseas-registration", "海外裝置完成註冊", current, previous)
+        if previous.status and not self._is_online(previous):
+            if self._is_online(current):
+                return Alert("overseas-online", "海外裝置上線", current, previous)
+            return None
+        if self._is_online(current) and current.ip and current.ip != previous.ip:
             return Alert("overseas-ip-change", "海外連線 IP 變更", current, previous)
         return None
 

@@ -62,7 +62,15 @@ class EmsConfig:
         default_factory=lambda: ["country_code", "country", "geo.country_code"]
     )
     status_fields: List[str] = field(
-        default_factory=lambda: ["connection_status", "status", "online"]
+        default_factory=lambda: [
+            "is_ems_online",
+            "connection_status",
+            "status",
+            "online",
+        ]
+    )
+    registration_status_fields: List[str] = field(
+        default_factory=lambda: ["is_ems_registered", "registration_status"]
     )
     registered_fields: List[str] = field(
         default_factory=lambda: ["registered_at", "registration_time", "created_at"]
@@ -76,6 +84,9 @@ class EmsConfig:
     )
     online_values: List[str] = field(
         default_factory=lambda: ["online", "connected", "true", "1"]
+    )
+    registered_values: List[str] = field(
+        default_factory=lambda: ["registered", "true", "1"]
     )
 
     @classmethod
@@ -133,7 +144,12 @@ class EmsConfig:
                 "EMS_COUNTRY_FIELDS", ["country_code", "country", "geo.country_code"]
             ),
             status_fields=_get_list(
-                "EMS_STATUS_FIELDS", ["connection_status", "status", "online"]
+                "EMS_STATUS_FIELDS",
+                ["is_ems_online", "connection_status", "status", "online"],
+            ),
+            registration_status_fields=_get_list(
+                "EMS_REGISTRATION_STATUS_FIELDS",
+                ["is_ems_registered", "registration_status"],
             ),
             registered_fields=_get_list(
                 "EMS_REGISTERED_FIELDS",
@@ -147,6 +163,12 @@ class EmsConfig:
                 value.lower()
                 for value in _get_list(
                     "EMS_ONLINE_VALUES", ["online", "connected", "true", "1"]
+                )
+            ],
+            registered_values=[
+                value.lower()
+                for value in _get_list(
+                    "EMS_REGISTERED_VALUES", ["registered", "true", "1"]
                 )
             ],
         )
