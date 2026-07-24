@@ -10,7 +10,6 @@ tests/
 scripts/
 *.md
 certs/
-geoip/
 *.pem
 *.key
 *.crt

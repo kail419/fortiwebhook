@@ -14,4 +14,3 @@ certs/*
 *.crt
 *.pfx
 *.p12
-*.mmdb
