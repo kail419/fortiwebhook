@@ -60,6 +60,9 @@ class EventType:
     # Extra payload fields worth highlighting for this event, on top of the
     # always-shown common set (device / time / source / message).
     detail_fields: Tuple[str, ...] = ()
+    # Whether this event produces a notification. Logout events are recognised
+    # (so they aren't misclassified into an alert) but muted — nothing is sent.
+    notify: bool = True
 
 
 # Catch-all for anything not in the catalog. Everything the body carries is
@@ -80,13 +83,13 @@ CATALOG: Tuple[EventType, ...] = (
     EventType("vpn-login", "VPN 連線登入", "VPN login",
               USER, "warning", "vpn"),
     EventType("vpn-logout", "VPN 連線結束", "VPN logout",
-              USER, "info", "vpn"),
+              USER, "info", "vpn", notify=False),
     EventType("admin-login", "管理者登入", "Admin login",
               TEAM, "warning", "admin", ("admin", "ui", "srcip")),
     EventType("admin-login-failed", "管理者登入失敗", "Admin login failed",
               TEAM, "critical", "admin", ("admin", "ui", "srcip", "status")),
     EventType("admin-logout", "管理者登出", "Admin logout",
-              TEAM, "info", "admin", ("admin", "ui", "srcip")),
+              TEAM, "info", "admin", ("admin", "ui", "srcip"), notify=False),
     EventType("config-change", "設定變更", "Configuration change",
               TEAM, "warning", "config", ("admin", "ui", "cfgpath", "cfgattr")),
     EventType("ips-attack", "IPS 入侵偵測", "IPS/IDS attack",

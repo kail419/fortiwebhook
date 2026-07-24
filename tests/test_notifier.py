@@ -382,6 +382,25 @@ class AdminLoginRoutingTests(unittest.TestCase):
         self.assertEqual(result["status"], "sent")
         self.assertIn("管理者登入失敗", send.call_args.kwargs["subject"])
 
+    def test_admin_logout_is_muted(self):
+        payload = {"subtype": "system", "action": "logout", "user": "root"}
+        with mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(self._cfg()).handle(payload)
+        self.assertEqual(result["event"], "admin-logout")
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "event-muted")
+        send.assert_not_called()
+
+    def test_vpn_logout_is_muted(self):
+        payload = {"subtype": "vpn", "action": "tunnel-down", "user": "jdoe"}
+        with mock.patch("app.notifier.resolve_email") as lookup, \
+             mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(self._cfg()).handle(payload)
+        self.assertEqual(result["event"], "vpn-logout")
+        self.assertEqual(result["reason"], "event-muted")
+        lookup.assert_not_called()
+        send.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

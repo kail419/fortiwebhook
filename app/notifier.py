@@ -137,6 +137,10 @@ class Notifier:
             "event": event_type.key,
         }
 
+        if not event_type.notify:
+            log.info("Event %s is muted; no notification sent", event_type.key)
+            return {**base, "status": "skipped", "reason": "event-muted"}
+
         if event_type.key in self.config.disabled_events:
             log.info("Event %s disabled by config", event_type.key)
             return {**base, "status": "skipped", "reason": "event-disabled"}

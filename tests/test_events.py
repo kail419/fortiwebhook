@@ -93,6 +93,14 @@ class HeuristicClassifyTests(unittest.TestCase):
         event, _ = classify({"subtype": "system", "action": "logout", "user": "root"})
         self.assertEqual(event.key, "admin-logout")
 
+    def test_logout_events_are_muted_but_logins_are_not(self):
+        admin_logout, _ = classify({"subtype": "system", "action": "logout"})
+        vpn_logout, _ = classify({"subtype": "vpn", "action": "tunnel-down"})
+        admin_login, _ = classify({"subtype": "system", "action": "login"})
+        self.assertFalse(admin_logout.notify)
+        self.assertFalse(vpn_logout.notify)
+        self.assertTrue(admin_login.notify)
+
     def test_config_edit_is_not_mistaken_for_admin_login(self):
         event, _ = classify(
             {"subtype": "system", "action": "edit", "cfgpath": "firewall.policy",

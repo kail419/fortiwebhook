@@ -158,8 +158,12 @@ Recognised keys (bilingual title, severity, and default audience are built in):
 
 | Audience | Event keys |
 |----------|-----------|
-| user | `vpn-login`, `vpn-logout` |
-| team | `admin-login`, `admin-login-failed`, `admin-logout`, `config-change`, `ips-attack`, `virus-detected`, `dos-attack`, `webfilter-block`, `app-control`, `ha-event`, `conserve-mode`, `link-down`, `license-expiry`, `fortiguard-update` |
+| user | `vpn-login` |
+| team | `admin-login`, `admin-login-failed`, `config-change`, `ips-attack`, `virus-detected`, `dos-attack`, `webfilter-block`, `app-control`, `ha-event`, `conserve-mode`, `link-down`, `license-expiry`, `fortiguard-update` |
+
+Logout events (`vpn-logout`, `admin-logout`) are recognised but **muted** — no
+alert is sent — so a login/logout trigger forwarding both won't notify on the
+logout half.
 
 A body without an `event` key is classified heuristically from standard FortiOS
 fields (`type` / `subtype` / `action` / `eventtype` / `logdesc`), and a legacy
