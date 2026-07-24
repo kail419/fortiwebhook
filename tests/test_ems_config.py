@@ -30,6 +30,17 @@ class EmsConfigTests(unittest.TestCase):
         self.assertEqual(cfg.user_fields, ["identity.email", "identity.username"])
         self.assertEqual(cfg.home_countries, ["TW", "Taiwan"])
 
+    def test_country_name_fields_are_configurable(self):
+        env = {"EMS_COUNTRY_NAME_FIELDS": "geo.country_full,location.name"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            cfg = EmsConfig.from_env()
+        self.assertEqual(cfg.country_name_fields, ["geo.country_full", "location.name"])
+
+    def test_country_name_fields_have_a_default(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            cfg = EmsConfig.from_env()
+        self.assertIn("country_name", cfg.country_name_fields)
+
     def test_token_file_is_supported(self):
         with mock.patch("builtins.open", mock.mock_open(read_data=" token\n")):
             with mock.patch.dict(

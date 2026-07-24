@@ -117,6 +117,7 @@ def parse_endpoint(record: dict, config: EmsConfig) -> Optional[Endpoint]:
         user=_first(record, config.user_fields),
         ip=_first(record, config.ip_fields),
         country_code=_first(record, config.country_fields),
+        country_name=_first(record, config.country_name_fields),
         status=status,
         registration_status=registration_status,
         registered_at=_first(record, config.registered_fields),
@@ -397,6 +398,24 @@ class StateStore:
             )
 
 
+# English counterparts to the Chinese Alert.label, keyed by Alert.kind, so the
+# bilingual e-mail can name the event in both languages.
+_EVENT_LABELS_EN = {
+    "overseas-registration": "Overseas device connected / registered",
+    "overseas-online": "Overseas device came online",
+    "overseas-ip-change": "Overseas source IP changed",
+}
+
+
+def _country_display(endpoint: Endpoint) -> str:
+    """Human-friendly country string, e.g. 'United States (US)', 'US', or ''."""
+    name = endpoint.country_name.strip()
+    code = endpoint.country_code.strip()
+    if name and code and name.lower() != code.lower():
+        return f"{name} ({code})"
+    return name or code
+
+
 class AlertMailer:
     def __init__(self, smtp_config: Config):
         self.smtp_config = smtp_config
@@ -411,8 +430,10 @@ class AlertMailer:
         context = {
             "event_kind": alert.kind,
             "event_label": alert.label,
+            "event_label_en": _EVENT_LABELS_EN.get(alert.kind, ""),
             "endpoint": alert.endpoint,
             "previous": alert.previous,
+            "country": _country_display(alert.endpoint),
             "org_name": self.smtp_config.org_name,
         }
         subject = self.templates.get_template("ems_alert.subject.j2").render(**context)
@@ -460,12 +481,18 @@ class EmsMonitor:
         return bool(values) and values.isdisjoint(self.home_countries)
 
     def _enrich(self, endpoint: Endpoint) -> Endpoint:
-        if endpoint.country_code or endpoint.country_name or not endpoint.ip:
+        # A readable country name is worth a GeoIP lookup even when the API
+        # already supplied a code, otherwise the alert would show a bare "US".
+        if endpoint.country_name or not endpoint.ip:
             return endpoint
-        country_code, country_name = self.geo.lookup(endpoint.ip)
-        return replace(
-            endpoint, country_code=country_code, country_name=country_name
-        )
+        code, name = self.geo.lookup(endpoint.ip)
+        if endpoint.country_code:
+            # The API is authoritative for the code; only borrow GeoIP's name,
+            # and only when the two agree, so code and name never contradict.
+            if name and code and code.lower() == endpoint.country_code.lower():
+                return replace(endpoint, country_name=name)
+            return endpoint
+        return replace(endpoint, country_code=code, country_name=name)
 
     def _detect(self, current: Endpoint, previous: Optional[Endpoint]) -> Optional[Alert]:
         if previous is None:

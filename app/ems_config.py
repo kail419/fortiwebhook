@@ -61,6 +61,9 @@ class EmsConfig:
     country_fields: List[str] = field(
         default_factory=lambda: ["country_code", "country", "geo.country_code"]
     )
+    country_name_fields: List[str] = field(
+        default_factory=lambda: ["country_name", "geo.country_name", "country"]
+    )
     status_fields: List[str] = field(
         default_factory=lambda: [
             "is_ems_online",
@@ -142,6 +145,10 @@ class EmsConfig:
             ),
             country_fields=_get_list(
                 "EMS_COUNTRY_FIELDS", ["country_code", "country", "geo.country_code"]
+            ),
+            country_name_fields=_get_list(
+                "EMS_COUNTRY_NAME_FIELDS",
+                ["country_name", "geo.country_name", "country"],
             ),
             status_fields=_get_list(
                 "EMS_STATUS_FIELDS",

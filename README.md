@@ -232,6 +232,9 @@ against the EMS 7.4.7 FortiAPI page:
 - online state: `is_ems_online`
 - registration state: `is_ems_registered`
 - user mailbox: `fct_users.0.user_email`
+- country: `country_code` for detection, plus `EMS_COUNTRY_NAME_FIELDS` for the
+  display name (the monitor fills a missing name from GeoIP when it agrees with
+  the code)
 - pagination: `data.total` with the `offset` query parameter
 
 <https://docs.fortinet.com/document/forticlient/7.4.7/ems-administration-guide/30768/forticlient-ems-api>
@@ -263,9 +266,10 @@ docker compose logs -f ems-monitor
 The first successful poll creates a SQLite baseline in the `ems_state` volume
 and sends no mail. Later polls alert only when a foreign endpoint is newly seen,
 changes from unregistered to registered, changes from offline to online, or
-changes to a new foreign public IP. Domestic registrations do not generate user
-notifications. If SMTP delivery fails, that endpoint's state is not advanced,
-so the next poll retries.
+changes to a new foreign public IP. Each alert names the specific event
+(bilingual) and, for an IP change, shows the previous source IP alongside the
+new one. Domestic registrations do not generate user notifications. If SMTP
+delivery fails, that endpoint's state is not advanced, so the next poll retries.
 
 This detects the FortiClient-to-EMS management connection, not a VPN session.
 GeoIP is approximate and may reflect a NAT, proxy, or corporate egress address.

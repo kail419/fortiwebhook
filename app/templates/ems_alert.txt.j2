@@ -2,13 +2,18 @@
 
 {{ endpoint.user or endpoint.hostname or "使用者" }} 您好,
 
-系統偵測到您的裝置目前使用海外網路連線至 FortiClient EMS，請確認以下來源 IP 是否為您本人使用。
+系統偵測到您的裝置發生「{{ event_label or "海外連線" }}」，來源為海外網路連線至 FortiClient EMS，請確認以下來源 IP 是否為您本人使用。
 
 ── 連線資訊 / Connection details ──
+  事件 Event  : {{ event_label or "海外連線" }}{% if event_label_en %} / {{ event_label_en }}{% endif %}
+
   使用者 User : {{ endpoint.user or "N/A" }}
   裝置 Device : {{ endpoint.hostname or "N/A" }}
   來源 IP     : {{ endpoint.ip or "N/A" }}
-  國家 Country: {{ endpoint.country_name or endpoint.country_code or "Unknown" }}
+{% if event_kind == "overseas-ip-change" and previous and previous.ip %}
+  先前 IP     : {{ previous.ip }}（變更前 / previous）
+{% endif %}
+  國家 Country: {{ country or "Unknown" }}
   狀態 Status : {{ endpoint.status or "Unknown" }}
   最後上線時間: {{ endpoint.last_seen or "N/A" }}
 

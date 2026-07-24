@@ -129,6 +129,13 @@ class EndpointParsingTests(unittest.TestCase):
     def test_record_without_id_is_skipped(self):
         self.assertIsNone(parse_endpoint({"hostname": "unknown"}, _ems_config()))
 
+    def test_reads_country_name_from_dedicated_field(self):
+        endpoint = parse_endpoint(
+            _record(country_code="US", country_name="United States"), _ems_config()
+        )
+        self.assertEqual(endpoint.country_code, "US")
+        self.assertEqual(endpoint.country_name, "United States")
+
 
 class ApiClientTests(unittest.TestCase):
     def test_extracts_configured_record_list(self):
@@ -298,6 +305,24 @@ class MonitorTransitionTests(unittest.TestCase):
         self.monitor.run_once()
         self.assertEqual(self.mailer.sent[0][0].endpoint.country_name, "Japan")
 
+    def test_geoip_names_country_when_api_gives_only_code(self):
+        self.monitor.geo = FakeGeo(("US", "United States"))
+        self.monitor.run_once()
+        self.api.records = [_record(country_code="US")]
+        self.monitor.run_once()
+        endpoint = self.mailer.sent[0][0].endpoint
+        self.assertEqual(endpoint.country_code, "US")
+        self.assertEqual(endpoint.country_name, "United States")
+
+    def test_geoip_name_ignored_when_it_disagrees_with_api_code(self):
+        self.monitor.geo = FakeGeo(("CN", "China"))
+        self.monitor.run_once()
+        self.api.records = [_record(country_code="US")]
+        self.monitor.run_once()
+        endpoint = self.mailer.sent[0][0].endpoint
+        self.assertEqual(endpoint.country_code, "US")
+        self.assertEqual(endpoint.country_name, "")
+
     @mock.patch("app.ems_monitor.resolve_email", return_value="user@example.com")
     def test_account_name_is_resolved_through_ldap(self, lookup):
         self.monitor.run_once()
@@ -325,6 +350,11 @@ class MonitorTransitionTests(unittest.TestCase):
 
 
 class EmsTemplateTests(unittest.TestCase):
+    def _render(self, alert):
+        with mock.patch("app.ems_monitor.send_mail") as send:
+            AlertMailer(_smtp_config()).send(alert, "user@example.com")
+        return send.call_args.kwargs
+
     @mock.patch("app.ems_monitor.send_mail")
     def test_mail_emphasizes_source_ip_and_escapes_html(self, send):
         endpoint = Endpoint(
@@ -345,6 +375,56 @@ class EmsTemplateTests(unittest.TestCase):
         self.assertIn("8.8.8.8", kwargs["html_body"])
         self.assertNotIn("<device>", kwargs["html_body"])
         self.assertIn("&lt;device&gt;", kwargs["html_body"])
+
+    def test_event_label_appears_in_subject_and_bodies(self):
+        endpoint = Endpoint(
+            endpoint_id="1",
+            ip="8.8.8.8",
+            country_code="US",
+            country_name="United States",
+            status="online",
+        )
+        kwargs = self._render(Alert("overseas-online", "海外裝置上線", endpoint))
+        for part in ("subject", "text_body", "html_body"):
+            self.assertIn("海外裝置上線", kwargs[part])
+        # The bilingual e-mail also names the event in English.
+        self.assertIn("Overseas device came online", kwargs["subject"])
+        self.assertIn("Overseas device came online", kwargs["html_body"])
+
+    def test_ip_change_shows_previous_ip(self):
+        current = Endpoint(
+            endpoint_id="1", ip="1.1.1.1", country_code="US", status="online"
+        )
+        previous = Endpoint(endpoint_id="1", ip="8.8.8.8", status="online")
+        kwargs = self._render(
+            Alert("overseas-ip-change", "海外連線 IP 變更", current, previous)
+        )
+        for part in ("text_body", "html_body"):
+            self.assertIn("1.1.1.1", kwargs[part])
+            self.assertIn("8.8.8.8", kwargs[part])
+
+    def test_non_ip_change_event_omits_previous_ip(self):
+        current = Endpoint(
+            endpoint_id="1", ip="1.1.1.1", country_code="US", status="online"
+        )
+        previous = Endpoint(endpoint_id="1", ip="8.8.8.8", status="offline")
+        kwargs = self._render(
+            Alert("overseas-online", "海外裝置上線", current, previous)
+        )
+        self.assertNotIn("8.8.8.8", kwargs["text_body"])
+        self.assertNotIn("8.8.8.8", kwargs["html_body"])
+
+    def test_country_name_and_code_are_combined(self):
+        endpoint = Endpoint(
+            endpoint_id="1",
+            ip="8.8.8.8",
+            country_code="US",
+            country_name="United States",
+            status="online",
+        )
+        kwargs = self._render(Alert("overseas-online", "海外裝置上線", endpoint))
+        self.assertIn("United States (US)", kwargs["text_body"])
+        self.assertIn("United States (US)", kwargs["html_body"])
 
 
 if __name__ == "__main__":
