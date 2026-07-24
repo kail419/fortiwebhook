@@ -344,6 +344,44 @@ class TeamRenderTests(unittest.TestCase):
         self.assertIn("&lt;b&gt;root&lt;/b&gt;", html)
         self.assertIn("<b>root</b>", text)
 
+    def test_admin_login_failed_alert_is_critical_and_shows_source(self):
+        from app.events import _BY_KEY
+        from app.notifier import Event
+        cfg = _base_config(team_email=["soc@x"])
+        event = Event(ip="203.0.113.9",
+                      raw={"event": "admin-login-failed", "admin": "root",
+                           "ui": "ssh(203.0.113.9)", "status": "failed"})
+        subject, text, html = Notifier(cfg)._render_team(event, _BY_KEY["admin-login-failed"])
+        self.assertIn("管理者登入失敗", subject)
+        self.assertIn("嚴重 / Critical", subject)
+        self.assertIn("ssh(203.0.113.9)", text)
+        self.assertIn("203.0.113.9", html)
+
+
+class AdminLoginRoutingTests(unittest.TestCase):
+    def _cfg(self):
+        return _base_config(team_email=["soc@x"])
+
+    def test_admin_login_success_alerts_team(self):
+        payload = {"subtype": "system", "action": "login", "status": "success",
+                   "user": "root", "srcip": "10.0.0.9", "ui": "GUI(10.0.0.9)"}
+        with mock.patch("app.notifier.resolve_email") as lookup, \
+             mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(self._cfg()).handle(payload)
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(result["event"], "admin-login")
+        lookup.assert_not_called()
+        self.assertEqual(send.call_args.kwargs["to_addr"], "soc@x")
+
+    def test_admin_login_failed_alerts_team(self):
+        payload = {"subtype": "system", "action": "login", "status": "failed",
+                   "user": "root", "srcip": "203.0.113.9"}
+        with mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(self._cfg()).handle(payload)
+        self.assertEqual(result["event"], "admin-login-failed")
+        self.assertEqual(result["status"], "sent")
+        self.assertIn("管理者登入失敗", send.call_args.kwargs["subject"])
+
 
 if __name__ == "__main__":
     unittest.main()

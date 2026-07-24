@@ -84,7 +84,7 @@ CATALOG: Tuple[EventType, ...] = (
     EventType("admin-login", "管理者登入", "Admin login",
               TEAM, "warning", "admin", ("admin", "ui", "srcip")),
     EventType("admin-login-failed", "管理者登入失敗", "Admin login failed",
-              TEAM, "critical", "admin", ("admin", "ui", "srcip")),
+              TEAM, "critical", "admin", ("admin", "ui", "srcip", "status")),
     EventType("admin-logout", "管理者登出", "Admin logout",
               TEAM, "info", "admin", ("admin", "ui", "srcip")),
     EventType("config-change", "設定變更", "Configuration change",
@@ -185,12 +185,18 @@ def _heuristic(payload: Mapping) -> str:
             return "vpn-logout"
         return "vpn-login"
 
-    # --- Administrative access ---
-    if "admin" in logdesc or present("admin"):
-        if "fail" in logdesc or "fail" in action or status in ("failed", "failure"):
-            return "admin-login-failed"
-        if "logout" in action or "logout" in logdesc:
+    # --- Administrative access (management-plane login / logout) ---
+    # Detected by the login/logout action or FortiOS's own phrasing, and scoped
+    # to the system subtype, so a config edit (add/edit/delete, handled below) or
+    # an end-user auth (subtype=user) is never mistaken for an admin login.
+    if subtype in ("system", "") and (
+        action in ("login", "logout")
+        or any(term in logdesc for term in ("login", "logout", "logged in", "logged out"))
+    ):
+        if "logout" in action or "logout" in logdesc or "logged out" in logdesc:
             return "admin-logout"
+        if status in ("failed", "failure", "fail") or "fail" in action or "fail" in logdesc:
+            return "admin-login-failed"
         return "admin-login"
 
     # --- Configuration change ---

@@ -168,6 +168,40 @@ unrecognised is still mailed to the team as a generic alert with **every provide
 field shown**, so no event is lost. Tune routing with `EVENT_AUDIENCE_OVERRIDES`,
 `EVENT_ALIASES`, and `DISABLED_EVENTS` (see [.env.example](.env.example)).
 
+### 3e. Example — administrator login alerts (success & failure)
+To alert on FortiGate **admin logins**, create two Automation stitches on an
+event-log trigger, each sending an explicit `event` key. Both are routed to
+`SECURITY_TEAM_EMAIL`; the failure is flagged **critical**.
+
+**Success** — trigger on the admin-login event (FortiOS logid `0100032001`):
+
+```json
+{
+  "event": "admin-login",
+  "admin": "%%log.user%%",
+  "srcip": "%%log.srcip%%",
+  "ui": "%%log.ui%%",
+  "time": "%%log.date%% %%log.time%%"
+}
+```
+
+**Failure** — trigger on the admin-login-failed event (logid `0100032002`):
+
+```json
+{
+  "event": "admin-login-failed",
+  "admin": "%%log.user%%",
+  "srcip": "%%log.srcip%%",
+  "ui": "%%log.ui%%",
+  "time": "%%log.date%% %%log.time%%"
+}
+```
+
+If you'd rather forward the raw system-event log without an `event` key, the
+service still classifies admin login/logout from the `action` (`login` /
+`logout`) and `status` (`success` / `failed`) fields. Mute routine successes
+with `DISABLED_EVENTS=admin-login` if only failures matter.
+
 ---
 
 ## 4. Configuration reference

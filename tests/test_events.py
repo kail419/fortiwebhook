@@ -73,6 +73,33 @@ class HeuristicClassifyTests(unittest.TestCase):
         event, _ = classify({"logdesc": "Administrator admin logged in", "admin": "admin"})
         self.assertEqual(event.key, "admin-login")
 
+    def test_admin_login_by_action_and_status_success(self):
+        event, _ = classify(
+            {"subtype": "system", "action": "login", "status": "success", "user": "root"}
+        )
+        self.assertEqual(event.key, "admin-login")
+
+    def test_admin_login_by_action_and_status_failed(self):
+        event, _ = classify(
+            {"subtype": "system", "action": "login", "status": "failed", "user": "root"}
+        )
+        self.assertEqual(event.key, "admin-login-failed")
+
+    def test_admin_login_failed_by_logdesc_only(self):
+        event, _ = classify({"logdesc": "Admin login failed", "user": "root"})
+        self.assertEqual(event.key, "admin-login-failed")
+
+    def test_admin_logout_by_action(self):
+        event, _ = classify({"subtype": "system", "action": "logout", "user": "root"})
+        self.assertEqual(event.key, "admin-logout")
+
+    def test_config_edit_is_not_mistaken_for_admin_login(self):
+        event, _ = classify(
+            {"subtype": "system", "action": "edit", "cfgpath": "firewall.policy",
+             "msg": "Administrator admin edited a firewall policy"}
+        )
+        self.assertEqual(event.key, "config-change")
+
     def test_config_change_by_action(self):
         event, _ = classify({"action": "edit", "cfgpath": "firewall.policy"})
         self.assertEqual(event.key, "config-change")
