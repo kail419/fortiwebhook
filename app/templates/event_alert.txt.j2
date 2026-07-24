@@ -1,0 +1,20 @@
+【FortiGate 資安通知 / Security Alert】
+
+{{ title_zh }} / {{ title_en }}
+嚴重度 Severity: {{ severity_label }}
+
+── 事件資訊 / Event details ──
+{% for label, value in rows %}
+  {{ label }}: {{ value }}
+{% endfor %}
+{% if all_fields %}
+── 完整欄位 / All fields ──
+{% for label, value in all_fields %}
+  {{ label }}: {{ value }}
+{% endfor %}
+{% endif %}
+本信由系統自動發送,請勿直接回覆。
+This is an automated FortiGate notification. Please do not reply.
+{% if org_name %}
+—— {{ org_name }} 資訊安全中心
+{% endif %}

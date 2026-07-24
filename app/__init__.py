@@ -1,3 +1,7 @@
-"""IPsecAlert — FortiGate webhook receiver that notifies the connecting user by e-mail."""
+"""IPsecAlert — FortiGate webhook receiver.
 
-__version__ = "1.0.0"
+Classifies each FortiGate Automation event and e-mails it: VPN logins go to the
+connecting user, admin / system / threat events go to the security-IT team.
+"""
+
+__version__ = "1.1.0"

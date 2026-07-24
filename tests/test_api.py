@@ -78,6 +78,19 @@ class ApiTests(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 502)
 
+    def test_webhook_team_event_is_200(self):
+        client = create_app(_cfg(team_email=["soc@x"])).test_client()
+        with mock.patch("app.notifier.send_mail"):
+            resp = client.post(
+                "/webhook/fortigate",
+                json={"event": "config-change", "admin": "root"},
+                headers={"X-Webhook-Token": "secret"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["status"], "sent")
+        self.assertEqual(body["event"], "config-change")
+
     def test_webhook_accepts_token_in_body(self):
         with mock.patch("app.notifier.resolve_email", return_value="jdoe@x"), \
              mock.patch("app.notifier.send_mail"):

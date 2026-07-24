@@ -229,5 +229,121 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(subject, "Existing static subject")
 
 
+class TeamEventRoutingTests(unittest.TestCase):
+    def _team_config(self, **overrides) -> Config:
+        overrides.setdefault("team_email", ["soc@x"])
+        return _base_config(**overrides)
+
+    def test_config_change_goes_to_team(self):
+        cfg = self._team_config()
+        payload = {"event": "config-change", "admin": "root",
+                   "srcip": "10.0.0.9", "cfgpath": "firewall.policy", "action": "edit"}
+        with mock.patch("app.notifier.resolve_email") as lookup, \
+             mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle(payload)
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(result["event"], "config-change")
+        self.assertEqual(result["recipient"], "soc@x")
+        lookup.assert_not_called()          # team events never hit LDAP
+        send.assert_called_once()
+        self.assertEqual(send.call_args.kwargs["to_addr"], "soc@x")
+        self.assertIn("設定變更", send.call_args.kwargs["subject"])
+
+    def test_team_event_without_recipient_is_skipped(self):
+        cfg = _base_config(team_email=[], fallback_email="")
+        with mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle({"event": "config-change"})
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "no-team-recipient")
+        send.assert_not_called()
+
+    def test_team_event_falls_back_to_fallback_email(self):
+        cfg = _base_config(team_email=[], fallback_email="soc@x")
+        with mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle({"event": "admin-login", "admin": "root"})
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(send.call_args.kwargs["to_addr"], "soc@x")
+
+    def test_extra_team_recipients_become_cc(self):
+        cfg = self._team_config(team_email=["soc@x", "ops@x"])
+        with mock.patch("app.notifier.send_mail") as send:
+            Notifier(cfg).handle({"event": "ha-event"})
+        self.assertEqual(send.call_args.kwargs["to_addr"], "soc@x")
+        self.assertIn("ops@x", send.call_args.kwargs["cc"])
+
+    def test_audience_override_routes_vpn_to_team(self):
+        cfg = self._team_config(event_audience_overrides={"vpn-login": "team"})
+        payload = {"subtype": "vpn", "user": "jdoe", "ip": "1.1.1.1"}
+        with mock.patch("app.notifier.resolve_email") as lookup, \
+             mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle(payload)
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(result["recipient"], "soc@x")
+        lookup.assert_not_called()
+        send.assert_called_once()
+
+    def test_disabled_event_is_skipped(self):
+        cfg = self._team_config(disabled_events=["config-change"])
+        with mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle({"event": "config-change"})
+        self.assertEqual(result["reason"], "event-disabled")
+        send.assert_not_called()
+
+    def test_unknown_event_uses_generic_team_alert(self):
+        cfg = self._team_config()
+        payload = {"type": "traffic", "subtype": "forward", "srcip": "1.2.3.4"}
+        with mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle(payload)
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(result["event"], "fortigate-event")
+        self.assertIn("FortiGate 事件", send.call_args.kwargs["text_body"])
+
+    def test_team_dedup_suppresses_repeat(self):
+        cfg = self._team_config()
+        payload = {"event": "ips-attack", "attack": "Bad.Sig", "srcip": "9.9.9.9"}
+        with mock.patch("app.notifier.send_mail") as send:
+            first = Notifier(cfg).handle(dict(payload))
+            notifier = Notifier(cfg)  # fresh cache; re-run to prove first send happened
+            second_same = notifier.handle(dict(payload))
+            third_same = notifier.handle(dict(payload))
+        self.assertEqual(first["status"], "sent")
+        self.assertEqual(second_same["status"], "sent")
+        self.assertEqual(third_same["reason"], "deduplicated")
+
+    def test_team_smtp_error_is_error(self):
+        cfg = self._team_config()
+        with mock.patch("app.notifier.send_mail", side_effect=MailSendError("boom")):
+            result = Notifier(cfg).handle({"event": "config-change"})
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["reason"], "smtp-error")
+
+    def test_both_audience_notifies_user_and_team(self):
+        cfg = self._team_config(event_audience_overrides={"admin-login": "both"})
+        payload = {"event": "admin-login", "user": "jdoe", "ip": "1.1.1.1", "admin": "jdoe"}
+        with mock.patch("app.notifier.resolve_email", return_value="jdoe@x"), \
+             mock.patch("app.notifier.send_mail") as send:
+            result = Notifier(cfg).handle(payload)
+        self.assertEqual(result["status"], "sent")   # team result is canonical
+        self.assertEqual(send.call_count, 2)          # team + user copies
+
+
+class TeamRenderTests(unittest.TestCase):
+    def test_team_alert_lists_all_fields_and_escapes_html(self):
+        from app.events import _BY_KEY
+        from app.notifier import Event
+        cfg = _base_config(team_email=["soc@x"], org_name="Acme")
+        event = Event(user="jdoe", ip="9.9.9.9",
+                      raw={"admin": "<b>root</b>", "cfgpath": "firewall.policy"})
+        subject, text, html = Notifier(cfg)._render_team(event, _BY_KEY["config-change"])
+        self.assertIn("設定變更", subject)
+        self.assertIn("警告 / Warning", subject)
+        self.assertIn("firewall.policy", text)
+        self.assertIn("firewall.policy", html)
+        # HTML values are escaped; the plaintext part keeps the raw value.
+        self.assertNotIn("<b>root</b>", html)
+        self.assertIn("&lt;b&gt;root&lt;/b&gt;", html)
+        self.assertIn("<b>root</b>", text)
+
+
 if __name__ == "__main__":
     unittest.main()

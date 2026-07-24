@@ -1,0 +1,42 @@
+<div style="margin:0;padding:0;background:#eef0f3;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;font-family:'Segoe UI','Microsoft JhengHei','PingFang TC',Arial,sans-serif;color:#1f2933;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:{{ accent }};padding:18px 28px;color:#ffffff;">
+            <div style="font-size:19px;font-weight:700;letter-spacing:.5px;">&#9888;&#65039; FortiGate 資安通知 &middot; Security Alert</div>
+            <div style="font-size:14px;font-weight:600;margin-top:5px;">{{ title_zh }} &middot; {{ title_en }}（{{ severity_label }}）</div>
+          </td>
+        </tr>
+        <tr><td style="padding:24px 28px 8px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 8px;font-size:14px;">
+            {% for label, value in rows %}
+            <tr>
+              <td style="padding:9px 12px;background:#f5f6f8;border:1px solid #e4e7eb;width:170px;color:#52606d;vertical-align:top;">{{ label }}</td>
+              <td style="padding:9px 12px;border:1px solid #e4e7eb;word-break:break-word;">{{ value }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% if all_fields %}
+          <div style="font-size:13px;color:#667085;margin:18px 0 6px;">完整欄位 / All fields</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;color:#52606d;">
+            {% for label, value in all_fields %}
+            <tr>
+              <td style="padding:6px 10px;background:#fafbfc;border:1px solid #eef0f3;width:170px;vertical-align:top;">{{ label }}</td>
+              <td style="padding:6px 10px;border:1px solid #eef0f3;word-break:break-word;">{{ value }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% endif %}
+        </td></tr>
+        <tr><td style="padding:16px 28px 24px;border-top:1px solid #eef0f3;">
+          <p style="margin:0;font-size:12px;color:#7b8794;line-height:1.6;">
+            本信由系統自動發送,請勿直接回覆。<br>
+            This is an automated FortiGate notification. Please do not reply.
+            {% if org_name %}<br>—— {{ org_name }} 資訊安全中心{% endif %}
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</div>

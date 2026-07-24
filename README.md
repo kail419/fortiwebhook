@@ -1,16 +1,20 @@
 # IPsecAlert
 
-External webhook service for **FortiGate Automation**. FortiGate cannot turn the
-`%%user%%` log variable into a mailbox on its own, so this service does it:
+External webhook service for **FortiGate Automation**. FortiGate can fire a
+webhook on almost any event, but it can't turn a `%%log.<field>%%` variable into
+a mailbox or decide who to tell — this service does. It classifies each event
+and routes it: a user's VPN login is mailed to **that user**, while admin,
+system, and threat events are mailed to the **security-IT team**.
 
 ```
-FortiGate (IPsec/VPN event)
+FortiGate (VPN login, admin login, config change, IPS/AV, HA, …)
    └─▶ Automation ▸ Action: Webhook ──HTTPS POST──▶ Caddy (TLS) ─▶ IPsecAlert
                                                                      │ 1. verify shared token
-                                                                     │ 2. resolve %%user%% → e-mail (LDAP/AD)
-                                                                     │ 3. send bilingual alert (SMTP)
+                                                                     │ 2. classify the event
+                                                                     │ 3a. user event → resolve %%user%% (LDAP/AD) → e-mail the user
+                                                                     │ 3b. admin/system/threat → e-mail the security-IT team
                                                                      ▼
-                                                          當事人 (the connecting user)
+                                                   當事人 or 資安團隊 · bilingual (SMTP)
 ```
 
 Runs as two always-on containers on a Linux host:
@@ -131,6 +135,39 @@ you want. (IPsecAlert also has an `IGNORE_COUNTRIES` safety net.)
 Webhook action from 3b, then use **Test** to fire a sample — you should see the
 request in `docker compose logs`.
 
+### 3d. More event types & routing
+The webhook is not limited to VPN. Each event is classified and routed by
+audience — user events (VPN / SSL-VPN login) to the affected user, and admin /
+system / threat events to the security-IT team (`SECURITY_TEAM_EMAIL`, falling
+back to `FALLBACK_EMAIL`).
+
+The reliable way to label an event is to add an `event` key to the stitch HTTP
+body, alongside the raw fields you want shown:
+
+```json
+{
+  "event": "admin-login",
+  "admin": "%%log.user%%",
+  "srcip": "%%log.srcip%%",
+  "ui": "%%log.ui%%",
+  "time": "%%log.date%% %%log.time%%"
+}
+```
+
+Recognised keys (bilingual title, severity, and default audience are built in):
+
+| Audience | Event keys |
+|----------|-----------|
+| user | `vpn-login`, `vpn-logout` |
+| team | `admin-login`, `admin-login-failed`, `admin-logout`, `config-change`, `ips-attack`, `virus-detected`, `dos-attack`, `webfilter-block`, `app-control`, `ha-event`, `conserve-mode`, `link-down`, `license-expiry`, `fortiguard-update` |
+
+A body without an `event` key is classified heuristically from standard FortiOS
+fields (`type` / `subtype` / `action` / `eventtype` / `logdesc`), and a legacy
+VPN-only body (just `user` / `ip` / `country`) keeps working unchanged. Anything
+unrecognised is still mailed to the team as a generic alert with **every provided
+field shown**, so no event is lost. Tune routing with `EVENT_AUDIENCE_OVERRIDES`,
+`EVENT_ALIASES`, and `DISABLED_EVENTS` (see [.env.example](.env.example)).
+
 ---
 
 ## 4. Configuration reference
@@ -161,12 +198,19 @@ annotated list). Highlights:
 | `IGNORE_COUNTRIES` | Comma list of countries to never alert on. |
 | `DEDUP_WINDOW_SECONDS` | Suppress duplicate user+IP alerts within N seconds (default 300). |
 | `FALLBACK_EMAIL` | Notified when a user's mailbox can't be resolved, so events aren't lost. |
+| `SECURITY_TEAM_EMAIL` | Recipients for team (admin/system/threat) events; falls back to `FALLBACK_EMAIL`. |
+| `EVENT_AUDIENCE_OVERRIDES` | Re-route events; `key=user\|team\|both` comma list (e.g. `vpn-login=team`). |
+| `EVENT_ALIASES` | Map your own event strings to catalog keys; `alias=key` comma list. |
+| `DISABLED_EVENTS` | Event keys to never alert on (comma list), e.g. `vpn-logout,fortiguard-update`. |
 
-The e-mail is a bilingual (中文 / English) security notice with a clear
-"if this was you / if it wasn't you" split. Edit
-[app/templates/alert.txt.j2](app/templates/alert.txt.j2) and
-[app/templates/alert.html.j2](app/templates/alert.html.j2) to change wording,
-then rebuild.
+The user e-mail is a bilingual (中文 / English) security notice with a clear
+"if this was you / if it wasn't you" split
+([alert.txt.j2](app/templates/alert.txt.j2) /
+[alert.html.j2](app/templates/alert.html.j2)); team events use a severity-graded
+layout that lists every field
+([event_alert.txt.j2](app/templates/event_alert.txt.j2) /
+[event_alert.html.j2](app/templates/event_alert.html.j2)). Edit and rebuild — or
+tweak in place, since `app/templates/` is bind-mounted into the container.
 
 ---
 

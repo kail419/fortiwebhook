@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 DEFAULT_MAIL_SUBJECT = (
@@ -39,6 +39,18 @@ def _get_list(name: str, default: Optional[List[str]] = None) -> List[str]:
     if not val:
         return list(default or [])
     return [item.strip() for item in val.split(",") if item.strip()]
+
+
+def _get_map(name: str) -> Dict[str, str]:
+    """Parse ``KEY=value,KEY2=value2`` into a dict; blank keys are dropped."""
+    result: Dict[str, str] = {}
+    for item in _get_list(name):
+        if "=" in item:
+            key, value = item.split("=", 1)
+            key, value = key.strip(), value.strip()
+            if key:
+                result[key] = value
+    return result
 
 
 def _get_secret(name: str, default: str = "") -> str:
@@ -113,6 +125,17 @@ class Config:
     fallback_email: str = ""         # notified when the user's mailbox can't be resolved
     notify_fallback_on_missing: bool = True
 
+    # --- Event routing (multi-event support) ---
+    # Recipients for team/admin/system/threat events. Falls back to
+    # fallback_email at runtime when left empty.
+    team_email: List[str] = field(default_factory=list)
+    # Override an event's audience by key, e.g. {"vpn-login": "team"}.
+    event_audience_overrides: Dict[str, str] = field(default_factory=dict)
+    # Map an operator's own event string to a catalog key, e.g. {"設定異動": "config-change"}.
+    event_aliases: Dict[str, str] = field(default_factory=dict)
+    # Event keys to never alert on (lower-cased), e.g. ["vpn-logout"].
+    disabled_events: List[str] = field(default_factory=list)
+
     # --- Logging ---
     log_level: str = "INFO"
 
@@ -158,8 +181,21 @@ class Config:
             dedup_window_seconds=_get_int("DEDUP_WINDOW_SECONDS", 300),
             fallback_email=os.getenv("FALLBACK_EMAIL", ""),
             notify_fallback_on_missing=_get_bool("NOTIFY_FALLBACK_ON_MISSING", True),
+            team_email=_get_list("SECURITY_TEAM_EMAIL"),
+            event_audience_overrides={
+                key.lower(): value.lower()
+                for key, value in _get_map("EVENT_AUDIENCE_OVERRIDES").items()
+            },
+            event_aliases=_get_map("EVENT_ALIASES"),
+            disabled_events=[key.lower() for key in _get_list("DISABLED_EVENTS")],
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
+
+    def team_recipients(self) -> List[str]:
+        """Effective recipients for team events (falls back to fallback_email)."""
+        if self.team_email:
+            return list(self.team_email)
+        return [self.fallback_email] if self.fallback_email else []
 
     def missing_required(self) -> List[str]:
         """Names of required settings that are not configured."""

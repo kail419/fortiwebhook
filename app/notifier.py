@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -12,6 +11,16 @@ from typing import Dict, Tuple
 from jinja2 import Environment, FileSystemLoader, TemplateError
 
 from .config import Config
+from .events import (
+    BOTH,
+    USER,
+    EventType,
+    classify,
+    clean_value,
+    first_value,
+    humanize_field,
+    resolve_audience,
+)
 from .ldap_lookup import LdapLookupError, resolve_email
 from .mailer import MailSendError, send_mail
 
@@ -34,14 +43,22 @@ _jinja = Environment(
     lstrip_blocks=True,
 )
 
-# Keys we accept from the FortiGate JSON body, in priority order. This lets the
-# body use either the friendly names or FortiGate's raw log field names.
-_USER_KEYS = ("user", "username", "unauthuser")
-_IP_KEYS = ("ip", "remip", "srcip", "remote_ip")
+# Severity presentation for team alerts.
+_SEVERITY_ACCENT = {"critical": "#b91c1c", "warning": "#b45309", "info": "#1d4ed8"}
+_SEVERITY_LABEL = {
+    "critical": "嚴重 / Critical",
+    "warning": "警告 / Warning",
+    "info": "資訊 / Info",
+}
+
+# Keys we accept from the FortiGate JSON body, in priority order, so the body
+# can use friendly names or FortiGate's raw log field names. Unexpanded log
+# variables (e.g. "%%log.srccity%%") are treated as missing by first_value().
+_USER_KEYS = ("user", "username", "unauthuser", "xauthuser")
+_IP_KEYS = ("ip", "remip", "srcip", "remote_ip", "tunnelip")
 _COUNTRY_KEYS = ("country", "srccountry", "src_country")
 _CITY_KEYS = ("city", "srccity", "src_city")
 _TIME_KEYS = ("time", "eventtime", "logtime", "date")
-_UNEXPANDED_FORTIGATE_VARIABLE = re.compile(r"^%%[^%\r\n]+%%$")
 
 
 @dataclass
@@ -54,26 +71,13 @@ class Event:
     raw: dict = field(default_factory=dict)
 
 
-def _first(payload: dict, keys: Tuple[str, ...]) -> str:
-    for key in keys:
-        value = payload.get(key)
-        if value is not None:
-            text = str(value).strip()
-            # FortiGate leaves unsupported log variables untouched. Treat a
-            # literal such as %%log.srccity%% as missing data rather than
-            # exposing the template expression in the notification.
-            if text and not _UNEXPANDED_FORTIGATE_VARIABLE.fullmatch(text):
-                return text
-    return ""
-
-
 def parse_event(payload: dict) -> Event:
     return Event(
-        user=_first(payload, _USER_KEYS),
-        ip=_first(payload, _IP_KEYS),
-        country=_first(payload, _COUNTRY_KEYS),
-        city=_first(payload, _CITY_KEYS),
-        time=_first(payload, _TIME_KEYS),
+        user=first_value(payload, _USER_KEYS),
+        ip=first_value(payload, _IP_KEYS),
+        country=first_value(payload, _COUNTRY_KEYS),
+        city=first_value(payload, _CITY_KEYS),
+        time=first_value(payload, _TIME_KEYS),
         raw=payload,
     )
 
@@ -117,21 +121,46 @@ class Notifier:
     def handle(self, payload: dict) -> dict:
         """Process one webhook event and return a JSON-serialisable result.
 
-        ``status`` is one of: ``sent`` | ``skipped`` | ``error``. The route
+        The body is classified into a FortiGate event type and routed by
+        audience: user-facing events (VPN logins) notify the affected user,
+        while administrative / system / threat events notify the security-IT
+        team. ``status`` is one of ``sent`` | ``skipped`` | ``error``; the route
         maps sent/skipped to HTTP 200 and error to HTTP 502.
         """
         event = parse_event(payload)
-        base = {"user": event.user, "ip": event.ip, "country": event.country}
+        event_type, _ = classify(payload, self.config.event_aliases)
+        audience = resolve_audience(event_type, self.config.event_audience_overrides)
+        base = {
+            "user": event.user,
+            "ip": event.ip,
+            "country": event.country,
+            "event": event_type.key,
+        }
 
+        if event_type.key in self.config.disabled_events:
+            log.info("Event %s disabled by config", event_type.key)
+            return {**base, "status": "skipped", "reason": "event-disabled"}
+
+        if audience == USER:
+            return self._handle_user_event(event, event_type, base)
+
+        result = self._handle_team_event(event, event_type, base)
+        if audience == BOTH and event.user:
+            # 'both' also copies the affected user; the team result is canonical.
+            self._handle_user_event(event, event_type, dict(base))
+        return result
+
+    def _handle_user_event(self, event: Event, event_type: EventType, base: dict) -> dict:
+        """Notify the affected user — the classic VPN-login path."""
         if not event.user:
-            log.warning("Webhook with no user field; payload keys=%s", list(payload.keys()))
+            log.warning("Webhook with no user field; payload keys=%s", list(event.raw.keys()))
             return {**base, "status": "skipped", "reason": "no-user-in-payload"}
 
         if event.country and event.country.lower() in self.config.ignore_countries:
             log.info("Ignoring user=%s from allow-listed country=%s", event.user, event.country)
             return {**base, "status": "skipped", "reason": "ignored-country"}
 
-        dedup_key = f"{event.user.lower()}|{event.ip}"
+        dedup_key = f"{event_type.key}|{event.user.lower()}|{event.ip}"
         if self._dedup.seen_recently(dedup_key):
             log.info("Deduplicated recent alert for %s", dedup_key)
             return {**base, "status": "skipped", "reason": "deduplicated"}
@@ -174,6 +203,49 @@ class Notifier:
                  event.user, email, event.country, event.ip)
         return {**base, "status": "sent", "recipient": email}
 
+    def _handle_team_event(self, event: Event, event_type: EventType, base: dict) -> dict:
+        """Notify the security-IT team about an admin / system / threat event."""
+        recipients = self.config.team_recipients()
+        if not recipients:
+            log.warning("Team event %s but no SECURITY_TEAM_EMAIL/FALLBACK_EMAIL set",
+                        event_type.key)
+            return {**base, "status": "skipped", "reason": "no-team-recipient"}
+
+        dedup_key = self._team_dedup_key(event, event_type)
+        if self._dedup.seen_recently(dedup_key):
+            log.info("Deduplicated recent team alert for %s", dedup_key)
+            return {**base, "status": "skipped", "reason": "deduplicated"}
+
+        try:
+            subject, text_body, html_body = self._render_team(event, event_type)
+        except TemplateError as exc:
+            log.error("Failed to render team alert for event=%s: %s", event_type.key, exc)
+            self._dedup.release(dedup_key)
+            return {**base, "status": "error", "reason": "template-error"}
+
+        primary, extra_cc = recipients[0], recipients[1:]
+        try:
+            send_mail(
+                self.config, to_addr=primary, subject=subject,
+                text_body=text_body, html_body=html_body,
+                cc=[*extra_cc, *self.config.mail_cc], bcc=self.config.mail_bcc,
+            )
+        except MailSendError as exc:
+            log.error("Failed to send team alert to %s: %s", primary, exc)
+            self._dedup.release(dedup_key)  # transient failure — allow retry
+            return {**base, "status": "error", "reason": "smtp-error", "recipient": primary}
+
+        log.info("Team-notified event=%s to=%s (srcip=%s)", event_type.key, primary, event.ip)
+        return {**base, "status": "sent", "recipient": primary}
+
+    @staticmethod
+    def _team_dedup_key(event: Event, event_type: EventType) -> str:
+        raw = event.raw
+        identity = (event.user or clean_value(raw.get("admin"))).lower()
+        detail = clean_value(raw.get("attack") or raw.get("cfgpath") or raw.get("virus"))
+        srcip = event.ip or clean_value(raw.get("srcip"))
+        return "|".join((event_type.key, identity, srcip, detail))
+
     def _maybe_fallback(self, event: Event, reason: str) -> bool:
         """Notify the SOC/fallback mailbox when the user can't be reached."""
         cfg = self.config
@@ -212,4 +284,57 @@ class Notifier:
         text_body = _jinja.get_template("alert.txt.j2").render(**ctx)
         html_body = _jinja.get_template("alert.html.j2").render(**ctx)
         subject = _jinja.from_string(self.config.mail_subject).render(**ctx)
+        return subject, text_body, html_body
+
+    def _render_team(self, event: Event, event_type: EventType) -> Tuple[str, str, str]:
+        """Render the generic team alert (subject + text + HTML)."""
+        raw = event.raw
+        srcip = event.ip or clean_value(raw.get("srcip"))
+        location = ", ".join(p for p in (event.city, event.country) if p)
+
+        # Curated, prominent rows: common fields first, then the fields the
+        # catalog flags as important for this event type. Deduplicated by label.
+        candidate_rows = [
+            ("設備 / Device", first_value(raw, ("devname", "device", "devid"))),
+            ("時間 / Time", event.time),
+            ("管理者 / Admin", clean_value(raw.get("admin"))),
+            ("使用者 / User", event.user),
+            ("來源 IP / Source IP", srcip),
+            ("目的 IP / Dest IP", clean_value(raw.get("dstip"))),
+            ("位置 / Location", location),
+            ("動作 / Action", clean_value(raw.get("action"))),
+        ]
+        candidate_rows += [
+            (humanize_field(name), clean_value(raw.get(name)))
+            for name in event_type.detail_fields
+        ]
+        candidate_rows.append(("訊息 / Message", first_value(raw, ("msg", "logdesc"))))
+
+        rows, seen = [], set()
+        for label, value in candidate_rows:
+            if value and label not in seen:
+                rows.append((label, value))
+                seen.add(label)
+
+        # Every provided field, so nothing is lost for unrecognised events.
+        all_fields = [
+            (humanize_field(key), clean_value(value))
+            for key, value in raw.items()
+            if key != "token" and clean_value(value)
+        ]
+
+        ctx = {
+            "title_zh": event_type.title_zh,
+            "title_en": event_type.title_en,
+            "severity": event_type.severity,
+            "severity_label": _SEVERITY_LABEL.get(event_type.severity, event_type.severity),
+            "accent": _SEVERITY_ACCENT.get(event_type.severity, _SEVERITY_ACCENT["warning"]),
+            "event_key": event_type.key,
+            "rows": rows,
+            "all_fields": all_fields,
+            "org_name": self.config.org_name,
+        }
+        text_body = _jinja.get_template("event_alert.txt.j2").render(**ctx)
+        html_body = _jinja.get_template("event_alert.html.j2").render(**ctx)
+        subject = _jinja.get_template("event_alert.subject.j2").render(**ctx)
         return subject, text_body, html_body
